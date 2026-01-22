@@ -44,6 +44,14 @@ If the system knows which lanes are actually backed up (and which aren’t), it 
 - Extend to adjacent signals so intent-aware decisions don’t break progression.
 - Add event/incident modes to prevent gridlock when intent surges are detected.
 
+## Comparison table (intent sources)
+| Intent source | What you get | Strength | Weakness |
+|---|---|---|---|
+| Stop-line presence/occupancy | who is waiting now | widely available | blind to midblock queue growth |
+| Lane-level counts | demand over time | good for split tuning | sensitive to detector errors |
+| Video movement classification | rich turning info | flexible; can estimate queues | weather/lighting issues |
+| CV/V2X (SPaT/MAP + messages) | approach/lane context + timing | can improve inference | deployment cost; coverage gaps |
+
 ## Upsides vs downsides
 | Aspect | Upside | Downside / risk | Mitigations |
 |---|---|---|---|
@@ -53,6 +61,17 @@ If the system knows which lanes are actually backed up (and which aren’t), it 
 
 ## Real-world anchors (what exists today)
 The SPaT Challenge implementation guide describes how roadside traffic signal controllers can output SPaT parameters, which can be converted to SAE J2735 SPaT messages, and combined with a static MAP message that describes intersection geometry so vehicles can interpret approach/phase status. It also notes this DSRC broadcast is one-way (helpful for privacy) and identifies minimum field needs like an NTCIP 1202 SPaT output via Ethernet plus software to translate to J2735 and generate MAP/RTCM messages (e.g., via an FHWA V2I Hub approach). This provides a concrete reference architecture for obtaining the signal-state + geometry context that enables richer “intent” mapping when using connected-vehicle data. [NOCoE: SPaT Challenge Implementation Guide](https://www.transportationops.org/spatchallenge/resources/Implementation-Guide)
+
+## MVP (smallest useful deployment)
+- Fix lane/phase mapping and compute **wasted green %** for each movement.
+- Start with **one intersection** and reallocate at most **3–5 seconds/cycle** based on stop-line occupancy.
+- Enforce non-negotiables: ped mins, clearance, min green per movement.
+- Add a “coordination friendliness” cap when part of a corridor plan (don’t shift splits too far).
+
+## Open questions
+- What is the best intent signal when detection is noisy: presence, count, or queue estimate?
+- How do we avoid starving low-volume movements while still reducing wasted green?
+- What is the correct interface boundary: does logic run in controller, edge, or central?
 
 ## Evaluation checklist (practical)
 - Wasted green time (seconds/cycle and %)

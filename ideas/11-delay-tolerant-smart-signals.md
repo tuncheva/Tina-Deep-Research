@@ -43,6 +43,14 @@ When the sensors or network get flaky, the signal system should automatically sw
 - Simulate failures and confirm KPIs remain within bounds.
 - Train operators: what triggers degrade/recover and how to override.
 
+## Comparison table (failure handling techniques)
+| Technique | What it does | Strength | Weakness |
+|---|---|---|---|
+| Heartbeats + health scores | detects comms/sensor degradation | simple + measurable | can miss subtle faults |
+| Plausibility checks | flags impossible flows/speeds | catches spoofing/bugs | tuning is hard |
+| Graded modes | step down control aggressiveness | bounded risk | may degrade performance |
+| Pre-approved plan library | safe fallback plans | predictable | needs maintenance |
+
 ## Upsides vs downsides
 | Aspect | Upside | Downside / risk | Mitigations |
 |---|---|---|---|
@@ -53,6 +61,32 @@ When the sensors or network get flaky, the signal system should automatically sw
 ## Real-world anchors (what exists today)
 A concrete motivation for delay-tolerant design is that intelligent intersections can be attacked or degraded when sensor inputs are manipulated or unreliable. A 2025 UC Irvine thesis studies physical inductive-loop spoofing attacks and shows that such attacks can significantly degrade both tracking metrics and intersection throughput in simulation, emphasizing the need for robust detection health monitoring and safe fallbacks. [UC Irvine thesis: Securing Intelligent Intersections (2025)](https://escholarship.org/content/qt50m2f8c7/qt50m2f8c7.pdf)
 
+## Failure-mode drills (what to simulate in the twin)
+| Failure / degradation | How it manifests | What a safe controller should do |
+|---|---|---|
+| Detector stuck-on | constant call, inflated volume/occupancy | cap extensions; use plausibility; ignore that detector after threshold |
+| Detector dead | no calls even with queued traffic | failover to recall/minimum service; switch to fixed plan if widespread |
+| Clock drift / time skew | offsets “slide”; coordination breaks | detect drift; resync; log drift events |
+| Comms latency | late state arrives after decision | act locally; treat late data as stale; widen safety margins |
+| Partial observability | only probe travel times; no counts | use conservative plan selection; avoid per-cycle micromanagement |
+| Controller reboot | momentary all-red or default plan | enforce safe startup plan; require explicit restore-to-plan logic |
+
+## Practical guardrails (so degradation is bounded)
+- **Oscillation protection**: once you drop into a fallback mode, require a minimum dwell time and a clean bill of health for N minutes before stepping back up.
+- **Caps that always apply**: max cycle length, max pedestrian wait, max queue spillback risk (if detected), and no “short greens” below minima.
+- **Auditability**: every mode switch should emit a reason code and the health signals that triggered it (pairs naturally with [20) Explainable Signals](../ideas/20-explainable-signals.md)).
+
+## MVP (smallest useful deployment)
+- Define the 4 modes (`A` adaptive, `B` conservative, `C` fixed, `D` flash) with clear entry/exit rules.
+- Add per-intersection **health scorecards** (detector uptime, comms latency, time drift flags).
+- Run in **shadow mode** first: compute recommended mode and compare with operator judgment.
+- Implement a one-click “force mode C” operator override with automatic expiry.
+
+## Open questions
+- Which signals should be centralized vs local-only under comms loss?
+- How can we detect “wrong data” (plausibility) without over-triggering fallbacks?
+- What should be the default conservative parameters (caps) by intersection type?
+
 ## Evaluation checklist (practical)
 - Time to detect failure and enter safe mode
 - Queue spillback during degraded operation
@@ -62,3 +96,4 @@ A concrete motivation for delay-tolerant design is that intelligent intersection
 
 ## Sources
 - https://escholarship.org/content/qt50m2f8c7/qt50m2f8c7.pdf
+- https://airc.nist.gov/docs/AI_RMF_Playbook.pdf

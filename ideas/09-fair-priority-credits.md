@@ -92,6 +92,14 @@ Given recovery is critical (TSP guide), define:
 - Publish monthly reports: who got priority, where, and impacts.
 - Adjust budgets by corridor performance and equity analysis.
 
+## Comparison table (priority governance models)
+| Model | How it allocates priority | Strengths | Weaknesses |
+|---|---|---|---|
+| Always-on priority | all eligible requests granted | simple; strong bus benefit | can harm cross streets; opaque equity |
+| Threshold-based priority | grant only when bus is late / queue exceeds X | reduces unnecessary interventions | still can concentrate harm |
+| Credit/budgeted priority (this idea) | limited budget by corridor/time/neighborhood | transparent + tunable equity | needs measurement + reporting |
+| Auction/market-like | requests “bid” for priority | can optimize under scarcity | hard to govern; equity risk |
+
 ## Upsides vs downsides
 | Aspect | Upside | Downside / risk | Mitigations |
 |---|---|---|---|
@@ -99,6 +107,19 @@ Given recovery is critical (TSP guide), define:
 | Performance | maintains transit reliability under constraints | may reduce peak bus gains vs always-on | target “late buses only”; corridor budgets |
 | Equity | prevents priority from harming same streets repeatedly | depends on good measurement | neighborhood KPIs + twin-based evaluation |
 | Safety | preemption remains strict; priority bounded | misconfiguration can break coordination | conservative defaults; staged rollout |
+
+## MVP (smallest useful deployment)
+- Implement budgeting for **one class** (transit priority) on **one corridor**.
+- Define and publish:
+  - max priority events/hour,
+  - max added cross-street delay,
+  - max pedestrian wait.
+- Add a simple monthly “credits statement”: credits spent, denied, and impacts.
+
+## Open questions
+- What is the best unit for budgeting: seconds of green, events, or person-delay impact?
+- How should credits roll over (or not) across days and time-of-day buckets?
+- How do we prevent gaming (e.g., repeated low-value requests) while staying transparent?
 
 ## Evaluation checklist
 - Bus travel time and reliability (p90, on-time)

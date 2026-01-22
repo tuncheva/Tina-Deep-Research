@@ -55,12 +55,31 @@ You can make signals smarter using “how many cars and how long queues are,” 
 ### Phase 3 — privacy-preserving enhancements
 - Add on-device learning or privacy-preserving aggregation if sharing across agencies/vendors.
 
+## Comparison table (privacy approaches)
+| Approach | What you keep | Privacy strength | Operational impact |
+|---|---|---|---|
+| Aggregates only | counts, occupancy, travel-time summaries | high | may reduce fidelity |
+| Edge analytics | counts + events, discard raw video | high | needs edge compute |
+| Differential privacy | noisy aggregates | very high for sharing | accuracy tradeoffs |
+| Secure aggregation | encrypted sharing of aggregates | high | implementation complexity |
+
 ## Upsides vs downsides
 | Aspect | Upside | Downside / risk | Mitigations |
 |---|---|---|---|
 | Privacy & trust | less surveillance risk | may reduce accuracy vs full trajectories | focus on key aggregates; periodic calibration |
 | Compliance | easier to align with privacy laws/policies | governance overhead | standard retention + audit playbooks |
 | Cost | less storage/bandwidth | edge compute cost | right-size edge hardware |
+
+## MVP (smallest useful deployment)
+- Publish a **data inventory**: signals collected, retention windows, and who has access.
+- Move video analytics to **edge counting** (no raw video retention) at 1–2 pilot intersections.
+- Calibrate the twin using **aggregates only** (counts, occupancy, phase states, travel-time summaries).
+- Add an “export gate”: any data export requires a ticket + audit log entry.
+
+## Open questions
+- What is the minimum data needed for 1–5 minute control decisions with acceptable accuracy?
+- Which privacy technique fits best: retention minimization, secure aggregation, or differential privacy?
+- How to validate that aggregates can’t be used to re-identify individuals (especially in low-volume areas)?
 
 ## Evaluation checklist
 - Data inventory (what is collected, for how long)

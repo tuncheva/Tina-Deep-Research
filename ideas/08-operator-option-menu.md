@@ -18,15 +18,31 @@ FHWA’s decision support report frames how DSTs integrate into traffic manageme
 ## Easy explanation
 Instead of the system changing signals by itself, it shows operators a short list of safe choices (like “Plan A, B, C”) and what each would likely do to congestion and queues.
 
+## Comparison table (operator menu vs automation)
+| Approach | Who decides | Strength | Weakness |
+|---|---|---|---|
+| Full automation | algorithm | fastest response | trust + audit concerns |
+| Operator option menu (this) | operator selects | accountable + human-in-the-loop | requires good UI + training |
+| Recommend-only | operator | safest rollout | slower impact |
+| Playbooks only | operator | simple | limited flexibility |
+
 ## What the option cards contain (recommended)
 | Field | Example |
 |---|---|
 | Option name | “Hold coordination + extend EB green” |
 | Deployability | “Allowed now” / “Blocked (ped constraint)” |
+| One-sentence reason | “Spillback risk rising on NB approach” |
 | KPIs | travel time, stops, max queue, bus reliability |
 | Risk flags | spillback risk, fairness impact, low data quality |
 | Confidence | High / Medium / Low + reason |
 | Rollback | “Revert to baseline plan in 10 min if KPI worsens” |
+| Audit link | “View evidence + who approved” |
+
+## Practical guardrails (so operator choice stays safe)
+- **Safe envelope**: every card must pass hard constraints (ped mins, clearance, max cycle, max queue/spillback policy).
+- **Limited levers**: hide “expert-only” actions unless an incident mode is declared.
+- **Anti-flapping**: if operators switch plans frequently, require a minimum dwell time or a supervisor confirmation.
+- **Evidence at click-time**: the UI must snapshot the KPIs/health that justified the recommendation (pairs well with [20) Explainable Signals](../ideas/20-explainable-signals.md)).
 
 ## Implementation plan (phased)
 ### Phase 0 — decide what operators can actually deploy
@@ -58,6 +74,17 @@ Instead of the system changing signals by itself, it shows operators a short lis
 | Human factors | reduces black-box automation | decision burden on operators | keep options small; presets |
 | Safety | ensures options are constrained | UI mistakes can still happen | deployability checks; confirmations |
 | Trust | supports transparency & accountability | uncertainty hard to explain | show confidence + worst-case |
+
+## MVP (smallest useful deployment)
+- Implement **option cards** for a single corridor with 3 options: baseline, congestion relief, spillback prevention.
+- Require a **deployability gate** (constraints check) that can only return `Allowed` or `Blocked`.
+- Log: displayed options, selected option, operator ID, and before/after KPIs.
+- Add a **“confidence explainer”** (e.g., “Low: detector health degraded on 2/8 approaches”).
+
+## Open questions
+- What is the safest default when confidence is low: “do nothing” or “conservative fallback”?
+- How do we avoid choice overload while still covering common incident types?
+- What is the best workflow for shared accountability (operator vs algorithm) in audits?
 
 ## Evaluation checklist
 - Time-to-decision in the control room

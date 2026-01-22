@@ -64,6 +64,14 @@ When a big group of people arrives, the signal temporarily changes how it serves
 - Tune thresholds per location and time-of-day (schools vs event nights).
 - Publish simple, auditable rules: “if ped queue > X for Y seconds, enable LPI/scramble”.
 
+## Comparison table (ped strategies)
+| Strategy | Conflict reduction | Capacity impact | Best when |
+|---|---|---|---|
+| Concurrent ped | baseline | low | normal demand |
+| LPI | medium | low–medium | high turning conflicts |
+| Lagging ped | medium | low–medium | site-specific turn patterns |
+| Scramble (exclusive ped) | high | higher delay/cycle | very high ped surges |
+
 ## Upsides vs downsides
 | Aspect | Upside | Downside / risk | Mitigations |
 |---|---|---|---|
@@ -75,6 +83,17 @@ When a big group of people arrives, the signal temporarily changes how it serves
 ## Real-world anchors (what exists today)
 - FHWA documents LPI/lagging/exclusive pedestrian phases and their tradeoffs, including the “pedestrian scramble” concept. [FHWA Signal Timing Manual (Archived), Ch. 4.5](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter4.htm#4.5)
 - FHWA’s Proven Safety Countermeasures describe LPI timing (3–7 seconds lead) and benefits (visibility, fewer conflicts). [FHWA LPI PSC](https://highways.dot.gov/safety/proven-safety-countermeasures/leading-pedestrian-interval)
+
+## MVP (smallest useful deployment)
+- Pilot at **one transit hub** intersection with frequent surges.
+- Add a simple crowd classifier (low/med/high) from ped queue length + arrival rate.
+- Enable only two modes initially: baseline and **LPI mode** (scramble later).
+- Enforce max ped wait, min clearance, and a minimum dwell time to avoid oscillation.
+
+## Open questions
+- What detection method is reliable in all lighting/weather: thermal, radar, video, or button analytics?
+- When is scramble justified vs LPI (turn volumes, conflict history, crowd size)?
+- How should crowd-smart interact with event mode (idea 18) and safety-first tuning (idea 17)?
 
 ## Evaluation checklist (practical)
 - Pedestrian delay (median + p95) and maximum wait

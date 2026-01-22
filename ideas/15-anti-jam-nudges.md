@@ -45,6 +45,14 @@ Don’t wait until everything is jammed—when the twin sees a jam forming, it m
 - Extend from a few critical corridors to a district.
 - Integrate with incident/event modes (idea 06/18).
 
+## Comparison table (nudge types)
+| Nudge type | What it does | Best when | Risk |
+|---|---|---|---|
+| Flush | temporarily favors downstream clearance | storage is near full | starves side streets |
+| Meter | reduces inflow to saturated link | downstream blocked | diversion to other routes |
+| Hold coordination | limits offset/split changes | corridor progression is critical | less adaptivity |
+| Emergency protection | protects a “no spillback” asset | rail crossing/bridge | can increase upstream delay |
+
 ## Upsides vs downsides
 | Aspect | Upside | Downside / risk | Mitigations |
 |---|---|---|---|
@@ -54,6 +62,19 @@ Don’t wait until everything is jammed—when the twin sees a jam forming, it m
 
 ## Real-world anchors (what exists today)
 The FHWA Traffic Signal Timing Manual discusses traffic responsive plan selection and adaptive control in the context of incidents and unusual conditions, noting that unexpected changes (incidents, extreme weather, events) can make time-of-day plans suboptimal and that data-driven selection/adaptation can improve operations. It also highlights the importance of detector reliability for adaptive systems and discusses incident/event management as a reason to retime signals to “flush” preferred movements and reduce delay during non-recurring congestion. These concepts directly support the idea of small, early “anti-jam” adjustments driven by real-time sensing and prediction. [FHWA Traffic Signal Timing Manual (Chapter 9)](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)
+
+## MVP (smallest useful deployment)
+- Choose **1–2 critical intersections** where spillback is safety-critical (rail crossing, bridge).
+- Implement a conservative detector-based spillback trigger (occupancy high + speed low + duration).
+- Allow only 2 actions:
+  - **meter inflow** (cap minor green)
+  - **flush downstream** (temporary extra green)
+- Require cool-down and maximum activation time; log each activation with reason + before/after.
+
+## Open questions
+- What is the best spillback signal: midblock occupancy, probe stoppage, or camera queue estimate?
+- How do we keep nudges from becoming “permanent bias” that shifts congestion to side streets?
+- Should nudges be purely local or coordinated across 2–3 upstream signals?
 
 ## Evaluation checklist (practical)
 - Spillback frequency and duration (before/after)

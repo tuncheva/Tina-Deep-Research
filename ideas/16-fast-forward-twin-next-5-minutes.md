@@ -42,6 +42,14 @@ Every few minutes the twin “fast-forwards” reality under a few safe options 
 - Expand action menu and incorporate incident/event triggers.
 - Add robustness: evaluate “best” under uncertainty bands (demand, detector noise).
 
+## Comparison table (action menu design)
+| Menu style | What it includes | Strength | Weakness |
+|---|---|---|---|
+| Fixed templates | 3–5 pre-approved actions | safe + explainable | limited optimality |
+| Parameterized tweaks | bounded split/offset changes | more flexible | harder to verify |
+| Mode switches | plan selection (baseline/incident) | robust | coarse control |
+| Hybrid | templates + small tweaks | best of both | complexity |
+
 ## Upsides vs downsides
 | Aspect | Upside | Downside / risk | Mitigations |
 |---|---|---|---|
@@ -51,6 +59,17 @@ Every few minutes the twin “fast-forwards” reality under a few safe options 
 
 ## Real-world anchors (what exists today)
 The FHWA Traffic Signal Timing Manual describes adaptive traffic signal control as a loop that (1) collects real-time data, (2) evaluates alternative strategies on a model of traffic behavior, (3) implements the “best” strategy, and (4) repeats continuously. That is the same control pattern this idea applies, with an explicit “fast-forward” digital twin to score short-horizon alternatives. [FHWA Traffic Signal Timing Manual (Chapter 9)](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)
+
+## MVP (smallest useful deployment)
+- Pick a corridor and run rollouts with a **fixed, small action menu** (3–5 actions).
+- Enforce a strict compute SLA (e.g., **p95 < 30s**) and fall back to baseline when missed.
+- Start in **recommend-only** mode with a daily report of “what it would have done”.
+- Add robustness scoring: choose actions that perform well under ± demand and detector-noise bands.
+
+## Open questions
+- How often should we re-plan: every cycle, every 2–5 minutes, or event-triggered?
+- What is the safest interface for applying changes (plan select vs per-cycle split tweaks)?
+- Which uncertainty sources dominate (demand, queues, turning rates, detector noise) and how to bound them?
 
 ## Evaluation checklist (practical)
 - Prediction error (queue, delay) vs observed

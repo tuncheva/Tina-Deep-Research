@@ -49,12 +49,31 @@ Source: [WSDOT TSMO](https://tsmowa.org/category/intelligent-transportation-syst
 ### Phase 4 — automation with guardrails
 - Auto-switch plans with strict constraints and clear rollback rules.
 
+## Comparison table (event timing activation styles)
+| Style | Trigger | Strength | Weakness |
+|---|---|---|---|
+| Fully manual | operator decides | safest early rollout | staff burden |
+| Semi-automatic | detection suggests, operator confirms | balances speed + control | depends on detection quality |
+| Fully automatic | auto-switch with rollback | fastest | risk of false triggers |
+| Pre-scheduled | calendar-based | predictable | doesn’t adapt to actual turnout |
+
 ## Upsides vs downsides
 | Aspect | Upside | Downside / risk | Mitigations |
 |---|---|---|---|
 | Operations | faster clearance and less gridlock | requires off-hours staffing | automation + playbooks |
 | Safety | reduces chaotic merging and blocked intersections | can increase ped wait | pedestrian constraints; crowd management |
 | Reliability | predictable response to known surges | false triggers disrupt normal traffic | multi-signal confirmation; hysteresis |
+
+## MVP (smallest useful deployment)
+- Pick **one venue** and define the inbound/outbound event windows.
+- Create **two plans** (inbound/outbound) plus a conservative “ped-protection” variant.
+- Run manual activation first, then add a simple trigger (volume threshold + parking occupancy).
+- Use the operator option-menu concept (idea 08) for selection + rollback.
+
+## Open questions
+- Which signals best predict start/end of surges (ticket scans, transit arrival bursts, parking telemetry)?
+- How to coordinate with pedestrian/crowd management (temporary barriers, crossing guards)?
+- What is the best return-to-normal strategy to avoid post-event oscillation?
 
 ## Evaluation checklist
 - Time to clear event traffic (queue dissipation)

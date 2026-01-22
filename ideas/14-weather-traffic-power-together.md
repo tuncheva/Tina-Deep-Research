@@ -49,6 +49,14 @@ When weather and power are bad, you don’t want “business as usual” signal 
 - Define stable return-to-normal criteria.
 - Publish after-action reports after major events.
 
+## Comparison table (storm/outage operating modes)
+| Mode | Trigger examples | Primary objective | Typical costs |
+|---|---|---|---|
+| Normal | fair weather + stable power | mobility optimization | none |
+| Storm-safe | heavy rain/fog | safety + predictability | more delay |
+| Power-constrained | UPS/battery limits | minimize cabinet risk | reduced features |
+| Comms-loss local | central link down | safe local autonomy | reduced coordination |
+
 ## Upsides vs downsides
 | Aspect | Upside | Downside / risk | Mitigations |
 |---|---|---|---|
@@ -60,6 +68,17 @@ When weather and power are bad, you don’t want “business as usual” signal 
 WSDOT notes that planned event or incident signal timing can support diversion around incidents and even regionwide evacuations, and that agencies often monitor conditions in real time and adjust timing accordingly. Weather and power events frequently manifest operationally as incidents/detours plus degraded sensing/communications, making this “fused constraints” mode a natural extension of existing event/incident timing practices. [WSDOT TSMO: Planned event or incident signal timing](https://tsmowa.org/category/intelligent-transportation-systems/planned-event-or-incident-signal-timing)
 
 A 2025 UC Irvine thesis simulates intelligent intersections under varying weather conditions (clear/heavy rain/heavy fog) and studies how sensor fusion performance and intersection throughput can degrade, highlighting why weather should be treated as a first-class input when deciding which control strategies are safe and reliable. [UC Irvine thesis: Securing Intelligent Intersections (2025)](https://escholarship.org/content/qt50m2f8c7/qt50m2f8c7.pdf)
+
+## MVP (smallest useful deployment)
+- Add a single **“storm/outage” mode** that can be activated citywide or by district.
+- Define a **trigger bundle**: rain/fog severity + comms heartbeat + cabinet power alarms.
+- Maintain a versioned library of **storm-safe plans** (slower progression, protected ped focus, spillback prevention).
+- Produce after-action “mode timeline” reports for each activation.
+
+## Open questions
+- Which weather indicators are reliable enough for automatic activation (forecast vs observed sensors)?
+- How should policies differ between power-constrained local operation vs central connectivity available?
+- What routes must remain prioritized during storms (hospitals, evacuation, transit) and how is that encoded?
 
 ## Evaluation checklist (practical)
 - Time-to-switch into storm/outage mode (and back)

@@ -16,6 +16,15 @@ FHWA’s report on deriving surrogate safety measures from microscopic simulatio
 ## Easy explanation
 Instead of asking “How fast can we move cars?”, the controller asks “How can we reduce close calls and dangerous moves while still keeping traffic flowing?”
 
+## Comparison table (safety levers vs what they reduce)
+| Lever | Reduces | Typical cost | When to use |
+|---|---|---|---|
+| Longer all-red / clearance | crossing/entry conflicts | small added delay | high-risk geometry, night/rain |
+| Protected-only lefts | left/through conflicts | longer cycle or added phases | peak turn surges, crash history |
+| LPI / scramble | ped-turn conflicts | vehicle delay, longer cycles | high ped volumes, transit hubs |
+| Speed-harmonized progression | rear-end braking waves | slightly longer travel time | corridors with shockwaves |
+| Spillback prevention | blocked-box + risky merges | shifts green distribution | constrained storage, rail crossings |
+
 ## What safety-first can control (examples)
 | Lever | Safety mechanism | Typical tradeoff |
 |---|---|---|
@@ -65,6 +74,17 @@ Source: [FHWA RD-03-050](https://ntlrepository.blob.core.windows.net/lib/38000/3
 | Safety outcomes | targets risky interactions directly | proxies may not perfectly predict crashes | validate against crash history; conservative thresholds |
 | Decision-making | makes tradeoffs explicit | can be politically sensitive (more delay) | person-delay framing; publish impact statements |
 | Engineering | structured methods exist | needs trajectory data / detailed models | start with micro-sim + a small set of SSMs |
+
+## MVP (smallest useful deployment)
+- Choose **one high-risk intersection** and compute SSMs from micro-sim trajectories (twin).
+- Implement **one safety lever** (e.g., protected-only lefts during peak or longer all-red) and quantify tradeoffs.
+- Publish a “safety impact statement”: SSM deltas + delay/person-delay deltas.
+- Add a weather/night conditional rule (ties to idea 14).
+
+## Open questions
+- Which SSMs correlate best with observed crash patterns for this city’s intersections?
+- How to avoid “overfitting” to proxies that reduce conflicts in sim but not in reality?
+- What is the acceptable mobility tradeoff per unit of safety improvement (policy decision)?
 
 ## Evaluation checklist
 - SSMs (TTC/PET distributions) pre/post

@@ -44,6 +44,14 @@ Instead of only optimizing “fastest,” you also optimize “calmest”: fewer
 - Update plans seasonally (tourism, school schedules, daylight).
 - Publish “calmer flow” reports for accountability.
 
+## Comparison table (noise mitigation levers)
+| Lever | Primary effect | Risk | Guardrail |
+|---|---|---|---|
+| Progression smoothing | fewer stops | speeding | progression speed <= posted |
+| Longer cycle (selectively) | reduces lost time / stop frequency | longer ped waits | max ped wait cap |
+| Metering side streets | reduces mainline braking waves | diversion | spillover monitoring |
+| Time-of-day quiet mode | targets night periods | inconsistent driver expectations | clear signage + predictable schedule |
+
 ## Upsides vs downsides
 | Aspect | Upside | Downside / risk | Mitigations |
 |---|---|---|---|
@@ -55,6 +63,17 @@ Instead of only optimizing “fastest,” you also optimize “calmest”: fewer
 FHWA describes Adaptive Signal Control Technology (ASCT) as adjusting signal timing to changing patterns and lists benefits including **“reduce congestion by creating smoother flow”** and notes ASCT can **reduce emissions** due to improved traffic flow. “Smoother flow” is the operational lever this idea uses as a proxy to reduce noise and disturbance near sensitive areas. [FHWA: Adaptive Signal Control Technology](https://www.fhwa.dot.gov/innovation/everydaycounts/edc-1/asct.cfm)
 
 The FHWA Traffic Signal Timing Manual notes that **stops** are important both for perceived progression quality and because accelerating vehicles can have disproportionately higher emissions than idling, motivating designs that reduce stop-and-go cycles rather than only minimizing average delay. [FHWA Traffic Signal Timing Manual (Chapter 3)](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter3.htm)
+
+## MVP (smallest useful deployment)
+- Define **one quiet zone** (night hours or a park-adjacent corridor) with a posted-speed progression target.
+- Optimize for **stops/vehicle reduction** first (simple proxy), with strict caps on pedestrian wait.
+- Add a “spillover guard”: monitor volumes/speeds on parallel residential streets.
+- Publish a monthly “calmer flow” report: stops, speed variance, and complaints.
+
+## Open questions
+- Which proxy best tracks perceived noise: stops/vehicle, acceleration events, or speed variance?
+- How to prevent diversion that moves noise to nearby side streets?
+- Should quiet-zone rules be time-based (night) or event-based (wildlife seasons, hospital peaks)?
 
 ## Evaluation checklist (practical)
 - Stops/vehicle (corridor and inside quiet zones)
