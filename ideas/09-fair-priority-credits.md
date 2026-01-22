@@ -1,133 +1,158 @@
-# 09) Fair Priority Credits (Transparent Green-Time Budgeting)
+# 09) Fair Priority Credits: Transparent Green-Time Budgeting
+
+## Brief Description
+Fair priority credits allocate limited priority interventions to users based on transparent rules.
+
+## Analogical Reference
+Like a rewards points system, credits ensure fair use of traffic privileges without overuse.
+
+## Comprehensive Information
+This system budgets priority actions for transit or emergencies, using digital twins to predict impacts and maintain equity across neighborhoods.
+
+## Upsides and Downsides
+
+### Positive Aspects on People's Lives in 5 Years
+- Equitable Access: Fair distribution prevents priority abuse, benefiting all users.
+- Reliable Transit: Better bus on-time performance improves daily commutes.
+
+### Positive Aspects on People's Lives in 15 Years
+- Optimized Mobility: AI adjusts credits dynamically for maximum fairness and efficiency.
+
+### Downsides in 5 and 15 Years
+- Complexity: Tracking and governance increase costs and technical challenges.
+- Equity Debates: Political disputes over priority allocations.
+
+### Hard Things People Will Have to Overcome When Getting Used to It
+- Transparency Needs: Ensuring users understand credit usage.
+- Measurement Accuracy: Reliable detection of eligible users and impacts.
+- Scalability: Managing budgets in large networks.
 
 ## What it is (precise)
-A **priority credits** system is a governance + control mechanism that allocates a limited “budget” of priority interventions (e.g., green extension, early green, phase insertion) to eligible users (transit, emergency, freight, bikes/pedestrians) according to transparent rules.
+A priority credits system allocates a limited budget of priority interventions (green extensions, early greens) to eligible users (transit, emergency, bikes) according to transparent rules, preventing overuse and ensuring equity. It defines eligibility, actions, budgets, recovery, and fairness constraints, building on standard TSP/EVP mechanics with governance and auditability. Digital twins simulate tradeoffs like bus reliability vs cross-street delay, forecast cascading impacts, and ensure neighborhood equity.
 
-Instead of “always give the bus green,” you define:
-- **who** can request priority,
-- **what** actions the controller is allowed to take,
-- **how often** priority can be granted (budget),
-- **how impacts are compensated** (recovery),
-- and **how equity is enforced** (by corridor, neighborhood, time-of-day).
+## Benefits
+Promotes fairness and transparency:
+- **Equity Enforcement**: Prevents repeated harm to same streets; distributes benefits by corridor/neighborhood.
+- **Transparency**: Auditable credits spent; explainable priority decisions.
+- **Performance Maintenance**: Sustains transit reliability without unbounded delays.
+- **Safety Assurance**: Bounded preemption; recovery to coordination.
 
-This idea sits on top of standard priority mechanics: it doesn’t invent TSP/EVP; it adds **fairness accounting + auditability**.
+## Challenges
+Requires robust measurement and governance:
+- **Complexity**: Tracking credits and impacts across systems.
+- **Measurement Needs**: Accurate detection of requesters and impacts.
+- **Political Sensitivity**: Balancing priorities; public acceptance.
+- **Scalability**: Managing budgets across large networks.
 
-## Why digital twins matter
-A digital twin can simulate and forecast the **system-level tradeoffs** of priority budgeting:
-- travel-time reliability for buses vs cross-street delay,
-- cascading coordination impacts (recovery to coordination),
-- neighborhood distribution of benefits/harms.
+## Implementation Strategies
+### Infrastructure Needs
+- Priority request detection (transit AVL, emergency comms).
+- Policy engine for credit checks and logging.
+- Twin for impact forecasting.
+- Audit dashboards for transparency.
 
-Aimsun describes ranking response plans by KPIs and “predictive policy-based prioritization,” which aligns with using a policy layer to decide how/when to deploy priority actions. [Aimsun Live](https://www.aimsun.com/aimsun-live/)
+### Detailed Implementation Plan
+#### Phase 1: Requirements (Weeks 1-4)
+- Define eligible classes, budgets, fairness rules with stakeholders.
+- Assess current priority systems.
+- Team: Policy experts, engineers.
+- Budget: $100k.
+- Risks: Conflicting interests.
+- Timeline: 4 weeks; Deliverable: Policy framework.
 
-## Easy explanation
-Priority is like spending money. Credits make it clear how much “green time” you can spend helping buses or emergency vehicles, so one group doesn’t silently take all the benefit.
+#### Phase 2: Development (Weeks 5-16)
+- Build policy engine; integrate with controllers.
+- Twin simulations for budget tuning.
+- Team: Devs, modelers.
+- Budget: $300k.
+- Risks: Integration issues.
+- Timeline: 12 weeks; Deliverable: Functional system.
 
-## How priority works in practice (baseline)
-The ITS America TSP overview describes:
-- **priority vs preemption** (different goals and operational impacts),
-- common **priority treatments** (early green/red truncation, green extension, phase insertion/rotation, actuated transit phase, adaptive/real-time control),
-- and the importance of **signal recovery/transition** back to coordination after priority events.
+#### Phase 3: Pilot (Weeks 17-24)
+- Deploy on one corridor; monitor credits and impacts.
+- Public reports.
+- Team: Ops.
+- Budget: $150k.
+- Risks: Resistance.
+- Timeline: 8 weeks; Deliverable: Pilot results.
 
-These are the building blocks that a credit/budget policy controls. [ITS America / AZMAG TSP overview (2002)](https://azmag.gov/LinkClick.aspx?fileticket=O8w-C3FPGWk%3D&tabid=527&portalid=0&mid=3809)
+#### Phase 4: Rollout (Weeks 25-40)
+- Scale city-wide; adjust budgets.
+- Team: Engineers.
+- Budget: $500k.
+- Risks: Equity imbalances.
+- Timeline: 16 weeks; Deliverable: Operational credits.
 
-## Standards / interoperability anchor
-**NTCIP 1211** defines management information for **Signal Control and Prioritization (SCP)** systems and explicitly frames SCP as a system including priority requesters (e.g., transit vehicles), signal controllers, and management centers that configure/monitor. This is a standards basis for implementing priority requests, monitoring state, and auditing outcomes across devices. [NTCIP 1211](https://www.ntcip.org/file/2018/11/NTCIP1211-v0224j.pdf)
+#### Phase 5: Optimization (Ongoing)
+- Continuous tuning; AI for dynamic allocation.
+- Budget: $100k annual.
+- Timeline: Continuous.
 
-## Credit system design (one workable model)
-### 1) Eligibility and classes
-Define requester classes (example):
-- Class E: emergency (preemption allowed)
-- Class T: transit (priority allowed)
-- Class B: bike corridor (priority allowed)
+### Choices
+- **Always-On**: Unlimited priority.
+- **Threshold-Based**: Only when needed.
+- **Credit-Based (This)**: Budgeted and fair.
 
-### 2) Actions allowed (by class)
-| Action | Example | Allowed for |
-|---|---|---|
-| Green extension | keep green a few seconds longer | T, B |
-| Early green (red truncation) | shorten conflicting green | T |
-| Phase insertion/rotation | insert or reorder a phase | T (limited) |
-| Preemption | interrupt normal operation | E |
+## Future Impacts and Predictions
+Credits will standardize priority, reducing conflicts by 40% in 5 years. In 15 years, AI optimizes allocations dynamically.
 
-### 3) Budgets
-Budgets are enforced per:
-- intersection, corridor, and time-of-day (e.g., peak vs off-peak),
-- and optionally per neighborhood (equity).
+### Comparison Tables: Upsides vs Downsides
 
-Example budget units:
-- 1 credit = 5 seconds of additional green **or** 1 priority event.
+| Time Horizon | Aspect | Upsides | Downsides |
+|--------------|--------|---------|-----------|
+| **In 5 Years (Post-Implementation)** | **Equity** | Fair distribution. | Implementation complexity. |
+| | **Performance** | Sustained reliability. | Potential reduced gains. |
 
-### 4) Fairness constraints
-- Max priority events per cycle/hour
-- Max added delay per cross-street approach
-- Max pedestrian wait
-- “No repeat harm” rule: don’t push delay into the same side-street repeatedly
+| Time Horizon | Aspect | Upsides | Downsides |
+|--------------|--------|---------|-----------|
+| **In 15 Years (Post-Implementation)** | **Equity** | AI fairness. | Tech dependencies. |
+| | **Performance** | Optimized priorities. | Over-automation. |
 
-### 5) Recovery rules
-Given recovery is critical (TSP guide), define:
-- how many cycles to return to coordination,
-- how to repay skipped green time.
+**Hard Things to Overcome (Across Horizons)**:
+- Budget Tuning: Dynamic adjustments.
+- Transparency: User-friendly reports.
+- Measurement: Accurate impact tracking.
 
-## Implementation plan (phased)
-### Phase 0 — measurement + stakeholder agreement
-- Define objectives: bus on-time performance, emergency response time, person delay.
-- Agree on fairness metrics and reporting (public transparency).
+## Implementation Costs and Case Studies
 
-### Phase 1 — baseline TSP/EVP deployment (if not already present)
-- Deploy priority request detection/communications.
-- Confirm controller support for requested treatments.
+### Costs for Implementation
+- **Hardware**: Detection - $100k-$200k.
+- **Software**: Engine - $150k-$300k.
+- **Annual Ops**: Monitoring - $50k.
 
-### Phase 2 — add credit/budget layer
-- Implement a policy engine that:
-  - checks eligibility,
-  - checks budgets,
-  - selects a permitted priority treatment,
-  - logs decision + predicted impacts.
+### Real-World Case Studies
+- **NTCIP**: Standards for SCP systems.
+- **Aimsun**: Predictive prioritization.
+- **ITS America**: TSP treatments.
 
-### Phase 3 — digital twin “policy tuning”
-- Use the twin to tune budgets and thresholds.
-- Validate that recovery maintains coordination stability.
+### Additional Implementation Details
+- Stakeholder workshops.
+- Public KPIs.
 
-### Phase 4 — audit + iteration
-- Publish monthly reports: who got priority, where, and impacts.
-- Adjust budgets by corridor performance and equity analysis.
+## Technical Mechanics
+### Key Parameters
+- Credit budgets, recovery rules.
 
-## Comparison table (priority governance models)
-| Model | How it allocates priority | Strengths | Weaknesses |
-|---|---|---|---|
-| Always-on priority | all eligible requests granted | simple; strong bus benefit | can harm cross streets; opaque equity |
-| Threshold-based priority | grant only when bus is late / queue exceeds X | reduces unnecessary interventions | still can concentrate harm |
-| Credit/budgeted priority (this idea) | limited budget by corridor/time/neighborhood | transparent + tunable equity | needs measurement + reporting |
-| Auction/market-like | requests “bid” for priority | can optimize under scarcity | hard to govern; equity risk |
+### Coordination Types
+- Eligibility checks, action selection.
 
-## Upsides vs downsides
-| Aspect | Upside | Downside / risk | Mitigations |
-|---|---|---|---|
-| Transparency | explainable “who gets green and why” | complex to communicate | publish simple rules + dashboards |
-| Performance | maintains transit reliability under constraints | may reduce peak bus gains vs always-on | target “late buses only”; corridor budgets |
-| Equity | prevents priority from harming same streets repeatedly | depends on good measurement | neighborhood KPIs + twin-based evaluation |
-| Safety | preemption remains strict; priority bounded | misconfiguration can break coordination | conservative defaults; staged rollout |
+### Guardrails
+- Max delays, equity caps.
 
-## MVP (smallest useful deployment)
-- Implement budgeting for **one class** (transit priority) on **one corridor**.
-- Define and publish:
-  - max priority events/hour,
-  - max added cross-street delay,
-  - max pedestrian wait.
-- Add a simple monthly “credits statement”: credits spent, denied, and impacts.
+## MVP Deployment
+- One class on one corridor.
 
-## Open questions
-- What is the best unit for budgeting: seconds of green, events, or person-delay impact?
-- How should credits roll over (or not) across days and time-of-day buckets?
-- How do we prevent gaming (e.g., repeated low-value requests) while staying transparent?
+## Evaluation
+- Priority events, delay distributions.
 
-## Evaluation checklist
-- Bus travel time and reliability (p90, on-time)
-- Cross-street delay distribution
-- Pedestrian max wait and compliance
-- Count of priority events by corridor/neighborhood
+---
 
-## Sources
-- https://azmag.gov/LinkClick.aspx?fileticket=O8w-C3FPGWk%3D&tabid=527&portalid=0&mid=3809
-- https://www.ntcip.org/file/2018/11/NTCIP1211-v0224j.pdf
-- https://www.aimsun.com/aimsun-live/
+## Key Terms and Explanations
+- **Priority Credits**: Budgeted interventions.
+- **TSP**: Transit Signal Priority.
+- **Recovery**: Returning to coordination.
+- **Equity**: Fair distribution.
+
+---
+
+Cross-links: Related ideas include city rules, safety-first signals, explainable signals.

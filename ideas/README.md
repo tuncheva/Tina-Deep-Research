@@ -30,6 +30,3 @@ This folder contains one markdown file per idea, with:
 - [`ideas/19-crowd-smart-crossings.md`](ideas/19-crowd-smart-crossings.md)
 - [`ideas/20-explainable-signals.md`](ideas/20-explainable-signals.md)
 
-## Final synthesis
-
-- (planned) `ideas/00-comparison-and-rankings.md`

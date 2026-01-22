@@ -1,86 +1,151 @@
-# 18) Event-Aware Timing (Concert/Stadium/Festival Mode)
+# 18) Event-Aware Timing: Concert/Stadium/Festival Mode
+
+## Brief Description
+Event-aware timing activates special plans for demand surges from events or incidents.
+
+## Analogical Reference
+Like adjusting traffic for a parade, signals switch modes to handle crowd flows.
+
+## Comprehensive Information
+Detecting surges via thresholds, signals prioritize inbound/outbound movements with digital twin forecasting and rollback for safety.
+
+## Upsides and Downsides
+
+### Positive Aspects on People's Lives in 5 Years
+- Efficient Events: Faster clearance reduces congestion and stress.
+- Safety During Crowds: Predictable flows prevent chaos.
+
+### Positive Aspects on People's Lives in 15 Years
+- Smart Event Management: AI predicts and adapts to surges automatically.
+
+### Downsides in 5 and 15 Years
+- Complexity: Requires coordination and may disrupt normal traffic.
+- Staffing Demands: Off-hours activation needs resources.
+
+### Hard Things People Will Have to Overcome When Getting Used to It
+- Surge Detection: Accurate triggers for various events.
+- Multi-Agency Coordination: Integrating with event organizers.
+- Smooth Transitions: Returning to normal operations.
 
 ## What it is (precise)
-**Event-aware timing** detects or anticipates predictable demand surges (planned events, incidents, evacuations) and activates **special signal timing plans** that favor key inbound/outbound movements for a limited window, with active monitoring and rollback.
+Event-aware timing detects demand surges from planned events, incidents, evacuations, activating special plans favoring inbound/outbound movements with monitoring and rollback. Digital twins forecast congestion, rank plans by KPIs, supporting safe workflows. NOCoE TIM case studies show automatic plan downloads for event corridors, improving clearance and reducing gridlock.
 
-This is “planned event or incident signal timing” plus (optionally) automation: detecting the surge and switching plans with minimal operator burden.
+## Benefits
+Improves event management:
+- **Faster Clearance**: Pre-planned timings speed egress; NOCoE shows reduced gridlock.
+- **Safety Focus**: Predictable flows prevent chaos; monitoring ensures compliance.
+- **Operational Efficiency**: Playbooks reduce improvisation; regional programs demonstrate.
 
-## Why digital twins matter
-A digital twin supports event-aware timing by:
-- forecasting congestion build-up and spillback under different event plans,
-- ranking response plans by KPIs (delay, max queue, emissions proxies),
-- supporting a control-room workflow where operators choose from safe options.
+## Challenges
+Requires coordination and prediction:
+- **Surge Variability**: Real events differ from models; need robust triggers.
+- **Staffing Needs**: Off-hours activation; NOCoE highlights staffing for incidents.
+- **Integration**: With crowd management; temporary controls add complexity.
 
-Aimsun’s real-time platform describes rapid forecasting and response plan ranking, including predictive signal plan scheduling. [Aimsun Live](https://www.aimsun.com/aimsun-live/)
+## Implementation Strategies
+### Infrastructure Needs
+- Event detection: Volume thresholds, parking data.
+- Plan library: Inbound/outbound special timings.
+- Twin for forecasting spillback.
 
-## Easy explanation
-When a concert ends, traffic suddenly changes. Event mode is a pre-planned set of signal timings that helps people leave safely and quickly, then returns signals to normal.
+### Detailed Implementation Plan
+#### Phase 1: Event Inventory (Weeks 1-4)
+- Identify events; map corridors.
+- Team: Event planners.
+- Budget: $40k.
+- Risks: Incomplete coverage.
+- Timeline: 4 weeks; Deliverable: Event catalog.
 
-## Real-world practice anchor
-WSDOT’s TSMO guidance describes **planned event or incident signal timing** as synchronizing groups of signals to favor entering/exiting a venue or divert around incidents/evacuations; it notes goals like increasing green for event movements, real-time monitoring, and manual or detector-based activation. [WSDOT TSMO](https://tsmowa.org/category/intelligent-transportation-systems/planned-event-or-incident-signal-timing)
+#### Phase 2: Plan Development (Weeks 5-12)
+- Create library with contingencies.
+- Team: Engineers.
+- Budget: $120k.
+- Risks: Ineffective plans.
+- Timeline: 8 weeks; Deliverable: Plan sets.
 
-## What you need (per WSDOT TSMO)
-| Category | Typical requirements |
-|---|---|
-| Equipment | comms to central ops, central signal software, detection, cameras |
-| Planning | analysis and pre-programmed plans favoring specific movements |
-| Operations | staff to activate/adjust/turn off (or automation with detectors) |
-| Coordination | event managers, transit, law enforcement, affected agencies |
+#### Phase 3: Monitoring Setup (Weeks 13-20)
+- Add triggers; twin testing.
+- Team: Techs.
+- Budget: $100k.
+- Risks: False triggers.
+- Timeline: 8 weeks; Deliverable: Monitoring system.
 
-Source: [WSDOT TSMO](https://tsmowa.org/category/intelligent-transportation-systems/planned-event-or-incident-signal-timing)
+#### Phase 4: Activation Workflow (Weeks 21-32)
+- Train operators; phased rollout.
+- Team: Ops.
+- Budget: $150k.
+- Risks: Operator errors.
+- Timeline: 12 weeks; Deliverable: Active mode.
 
-## Implementation plan (phased)
-### Phase 0 — pick event types and corridors
-- Identify recurring events and affected corridors.
-- Define success KPIs: clearance time, max queue, ped safety.
+#### Phase 5: Continuous Improvement (Ongoing)
+- Update post-events; integrate AI.
+- Budget: $70k annual.
+- Timeline: Continuous.
 
-### Phase 1 — build an event plan library
-- Create pre/post-event plans: inbound (before), outbound (after).
-- Include contingency plans for incidents or road closures.
+### Choices
+- **Manual**: Operator activation.
+- **Semi-Auto**: Detection-assisted.
+- **Pre-Scheduled**: Calendar-based.
 
-### Phase 2 — monitoring and activation
-- Manual activation via TMC operators initially.
-- Add detector-based triggers where feasible (parking occupancy, volume thresholds).
+## Future Impacts and Predictions
+Event timings will cut clearance times by 30% in 5 years. In 15 years, AI predicts surges proactively.
 
-### Phase 3 — twin-based forecasting and option ranking
-- Use the twin to test plan robustness (start/end time uncertainty, attendance variability).
-- Present operators with 3–5 safe options (e.g., more outbound green vs protect pedestrians).
+### Comparison Tables: Upsides vs Downsides
 
-### Phase 4 — automation with guardrails
-- Auto-switch plans with strict constraints and clear rollback rules.
+| Time Horizon | Aspect | Upsides | Downsides |
+|--------------|--------|---------|-----------|
+| **In 5 Years (Post-Implementation)** | **Efficiency** | Faster clearance. | Surge variability. |
+| | **Safety** | Predictable flows. | Staffing needs. |
 
-## Comparison table (event timing activation styles)
-| Style | Trigger | Strength | Weakness |
-|---|---|---|---|
-| Fully manual | operator decides | safest early rollout | staff burden |
-| Semi-automatic | detection suggests, operator confirms | balances speed + control | depends on detection quality |
-| Fully automatic | auto-switch with rollback | fastest | risk of false triggers |
-| Pre-scheduled | calendar-based | predictable | doesn’t adapt to actual turnout |
+| Time Horizon | Aspect | Upsides | Downsides |
+|--------------|--------|---------|-----------|
+| **In 15 Years (Post-Implementation)** | **Efficiency** | AI anticipation. | Tech reliance. |
+| | **Safety** | Proactive safety. | Integration complexity. |
 
-## Upsides vs downsides
-| Aspect | Upside | Downside / risk | Mitigations |
-|---|---|---|---|
-| Operations | faster clearance and less gridlock | requires off-hours staffing | automation + playbooks |
-| Safety | reduces chaotic merging and blocked intersections | can increase ped wait | pedestrian constraints; crowd management |
-| Reliability | predictable response to known surges | false triggers disrupt normal traffic | multi-signal confirmation; hysteresis |
+**Hard Things to Overcome (Across Horizons)**:
+- Surge Detection: Reliable triggers.
+- Coordination: Multi-agency.
+- Return to Normal: Smooth transitions.
 
-## MVP (smallest useful deployment)
-- Pick **one venue** and define the inbound/outbound event windows.
-- Create **two plans** (inbound/outbound) plus a conservative “ped-protection” variant.
-- Run manual activation first, then add a simple trigger (volume threshold + parking occupancy).
-- Use the operator option-menu concept (idea 08) for selection + rollback.
+## Implementation Costs and Case Studies
 
-## Open questions
-- Which signals best predict start/end of surges (ticket scans, transit arrival bursts, parking telemetry)?
-- How to coordinate with pedestrian/crowd management (temporary barriers, crossing guards)?
-- What is the best return-to-normal strategy to avoid post-event oscillation?
+### Costs for Implementation
+- **Software**: Plan libraries - $100k-$200k.
+- **Hardware**: Detectors - $60k.
+- **Annual Ops**: Monitoring - $50k.
 
-## Evaluation checklist
-- Time to clear event traffic (queue dissipation)
-- Spillback/blocked-box frequency
-- Pedestrian delay and compliance
-- Operator workload and plan activation accuracy
+### Real-World Case Studies
+- **NOCoE TIM**: Response to incidents.
+- **Regional Programs**: Automatic downloads.
+- **AFAD PTS**: Temporary control solutions.
 
-## Sources
-- https://tsmowa.org/category/intelligent-transportation-systems/planned-event-or-incident-signal-timing
-- https://www.aimsun.com/aimsun-live/
+### Additional Implementation Details
+- Coordinate with venues.
+- Public notifications.
+
+## Technical Mechanics
+### Key Parameters
+- Trigger thresholds, plan durations.
+
+### Coordination Types
+- Inbound/outbound prioritization.
+
+### Guardrails
+- Ped safety, rollback.
+
+## MVP Deployment
+- One event; manual activation.
+
+## Evaluation
+- Clearance times, spillback.
+
+---
+
+## Key Terms and Explanations
+- **Event-Aware**: Surge-responsive timing.
+- **NOCoE TIM**: Traffic Incident Management.
+- **Plan Library**: Pre-vetted event timings.
+
+---
+
+Cross-links: Related ideas include rare-event practice, event-aware timing overlaps.
