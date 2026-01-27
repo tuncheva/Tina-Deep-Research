@@ -21,11 +21,189 @@ A **self-healing intersection** is a signal controller + monitoring layer that c
 ## Implementation Strategies
 
 ### Infrastructure Needs
-- **Controller state access**: phase/interval states, detector inputs, logs (often via NTCIP objects).
+- **Controller state access**: phase/interval states, detector inputs, logs (often via NTCIP objects) ([`NTCIP 1211 (Signal Control and Prioritization)`](https://www.ntcip.org/file/2018/11/NTCIP1211-v0224j.pdf)).
 - **Health monitoring**: per-detector stuck-on/off, variance/flatline checks, cross-sensor consistency, heartbeat checks.
 - **Fallback plan library**: pre-approved fixed-time + conservative actuated plans (and “all-red”/flash policies where applicable).
-- **ATSPM/telemetry**: performance measures to detect anomalies and validate recovery.
+- **ATSPM/telemetry**: performance measures to detect anomalies and validate recovery ([`FHWA ATSPM (landing)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm)).
 - **Audit logging**: append-only events with reason codes and evidence fields.
+
+---
+
+### 1) Safety Assurance & Verification Strategy (Controller + Supervisory)
+Self-healing has to be engineered like a safety feature: the *controller* must guarantee the legal/safe sequencing invariants, while the *supervisory layer* can decide **when** to switch strategies and **how** to route alerts.
+
+#### Boundary of responsibility (what must be guaranteed where)
+- **Controller firmware / cabinet (safety-critical)**
+  - Must enforce **conflict-free phase sequencing** and clearance behavior through controller logic and cabinet conflict monitoring (you do not rely on a cloud service to keep opposing greens from happening).
+  - Must enforce minimum greens, pedestrian WALK/FDW and clearance rules configured in the controller database.
+  - Must implement preemption behavior deterministically in the event supervisory comms are lost.
+- **Supervisory layer (safety-supporting, not safety-critical)**
+  - Computes health scores, recommends/commands mode changes (where permitted), and drives escalation workflows.
+  - Maintains auditable logs, fleet-wide dashboards, and correlation across intersections.
+
+This split is consistent with how ATSPM is positioned: ATSPM “does not solve problems by itself; technicians and engineers must interpret ATSPM reports and take action,” which is exactly the supervisory-layer role ([`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+
+#### Verification approaches
+- **Configuration validation (static checks before field deploy)**
+  - Verify phase compatibility/movement mapping is correct.
+  - Verify pedestrian minimums/clearance intervals are present and unchanged across NORMAL and fallback plans.
+  - Verify preemption inputs and priority logic are consistent across templates.
+- **Transition safety checks (runtime rules the supervisory layer enforces)**
+  - Never command a transition that would truncate clearance or pedestrian service in-progress.
+  - Only allow plan/mode switches at *safe boundaries* (end of cycle, barrier, or defined transition points), depending on controller capability.
+  - Enforce “safe denial”: if health evidence is insufficient or contradictory, switch to the most conservative allowed mode and alert ops.
+- **Regression testing strategy**
+  - Treat fallback templates as versioned artifacts; every change triggers automated replay of scenario tests and a sign-off workflow.
+
+#### Practical testing artifacts
+- **Failure-mode test cases** (minimum set)
+  - Detector stuck-on (continuous call) → verify health detection and degradation policy.
+  - Detector stuck-off (no actuation) → verify ped recall / min green guard remains safe.
+  - Intermittent comms loss → verify dwell/hysteresis prevents thrash.
+  - Controller clock drift / time jump → verify event ordering detection and conservative behavior.
+  - Power sag / cabinet restart → verify mode selection and safe return.
+- **Twin “failure drills”**
+  - Inject failures while the corridor is oversaturated and confirm spillback does not cascade.
+- **Field acceptance test (FAT) steps**
+  - Run shadow mode first and confirm that (1) health scoring flags known injected faults and (2) no unsafe transitions are commanded.
+  - Perform controlled drills (disconnect a detector, simulate comms loss) in off-peak windows and document outcomes.
+
+---
+
+### 2) Threat Model & Cyber-Resilient Self-Healing
+A self-healing system can be attacked by manipulating the same signals it uses to protect itself. The implementation must explicitly consider malicious triggering and spoofing.
+
+#### Lightweight threat model (what to assume can go wrong)
+- **Spoofed detection** (false calls / false occupancy) to force split failures or create artificial congestion.
+- **Replayed or forged telemetry** to hide faults or trigger fallbacks.
+- **Comms MITM / credential compromise** on management links.
+- **Time spoofing or time drift** to break correlation of events and create false alarms.
+
+#### Defensive patterns (vendor-neutral)
+- **Integrity and authentication**: require authenticated access for supervisory control and protect credentials; prefer network segmentation and controlled access paths in line with general hardening guidance ([`CISA Cybersecurity Best Practices`](https://www.cisa.gov/topics/cybersecurity-best-practices)).
+- **Signed / validated telemetry** (where supported) and strict device identity mapping so one cabinet cannot impersonate another.
+- **Rate limits + anomaly scoring**: throttle mode transition commands and require multiple independent health indicators before escalation.
+- **Quorum checks / corroboration**: do not trust any single sensor; corroborate detector anomalies with phase termination patterns, probe travel times, and comms status.
+- **Safe denial behaviors**: if you cannot trust inputs, prefer conservative operation (fixed-time or local isolated) and notify ops.
+
+#### Preventing “fallback thrash attacks”
+- **Hysteresis and minimum dwell**: once a mode changes, enforce a minimum time or minimum cycles before allowing another change.
+- **Escalation ladder**: repeated oscillations automatically escalate to human review.
+- **Manual lockout**: after N oscillations in a window, block auto-return and require acknowledgement.
+
+For cyber incidents specifically, align response workflows with transportation-focused cyber incident response and management frameworks ([`Transportation Cybersecurity Incident Response & Management Framework (PDF)`](https://rosap.ntl.bts.gov/view/dot/57007/dot_57007_DS1.pdf), [`FHWA/USDOT Transportation Cybersecurity Resources (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop24101/fhwahop24101.pdf)).
+
+---
+
+### 3) Network / Corridor-Aware Degradation Patterns
+A local fallback that is safe at one intersection can still be *operationally unsafe* at the corridor level if it causes spillback cascades.
+
+#### Coordination-safe fallback selection
+- Prefer fallbacks that keep coordination structure when possible (e.g., fixed-time plan with compatible cycle length and offsets) to preserve corridor progression.
+- If coordination cannot be maintained safely, degrade to local actuated but add strict queue/spillback guards.
+
+#### Anti-cascade patterns
+- **Upstream metering**: temporarily reduce upstream release rates when downstream storage is at risk.
+- **Max-green guards**: cap greens to prevent one movement from starving cross traffic during faults.
+- **Queue threshold triggers**: if downstream occupancy indicates spillback, switch to spillback-protection behavior.
+- **Corridor health aggregation**: if one node drops to FALLBACK, neighbors should adjust splits/offset assumptions and operators should see a corridor-level alert.
+
+#### What the twin should simulate
+- Queue spillback propagation, blocking of upstream intersections, and recovery time.
+- Diversion effects if major-route progression breaks.
+
+---
+
+### 4) Observability Requirements (Telemetry, Time, Events, Data Quality)
+Self-healing is only as good as its observability. ATSPM provides practical examples of how high-resolution logs can reveal detection failures and comms issues, and it defines specific “watchdog” conditions agencies can operationalize ([`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+
+#### Minimum telemetry set (baseline)
+- **Signal state**: phase/interval state changes, phase termination reason (gap-out/max-out/force-off), coordination plan ID.
+- **Detection**: raw detector actuations (or aggregated counts/occupancy), plus detector configuration metadata.
+- **Pedestrian**: ped calls/actuations, WALK start, ped service (for delay computations).
+- **Priority/preemption**: TSP and preemption events and status.
+- **Comms**: heartbeat/poll success, latency, missed poll counts.
+- **Cabinet/power** (if available): power status, UPS/battery status, cabinet door alarms.
+
+#### Event schema recommendations
+Create a structured event record:
+- `event_id`, `correlation_id`, `device_id`, `intersection_id`
+- `timestamp_utc`, `controller_local_time`, `time_quality`
+- `severity` (INFO/WARN/CRITICAL)
+- `reason_code` + `evidence` (metrics snapshot)
+- `previous_mode` → `new_mode`
+- `recommended_action` (ticket template)
+
+#### Time sync guidance (practical)
+- Use a consistent UTC timeline for all logs.
+- Detect and alarm on time discontinuities (“time jumped backwards/forwards”) and treat “unknown time quality” as a health degradation.
+- If time is untrusted, suppress fine-grained comparisons and fall back to conservative rules.
+
+#### Data quality checks (reduce false alarms)
+Operationalize checks similar to ATSPM’s watchdog patterns:
+- “No data” / communications failure detection.
+- High max-outs/force-offs in low-demand windows as detector fault indicators.
+- Excessive pedestrian actuations in overnight windows as “stuck ped button” indicator.
+
+ATSPM describes example watchdog thresholds (e.g., “no data” via record counts, max-outs/force-offs ratios, and stuck ped actuations during overnight hours) that agencies use as starting values ([`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+
+---
+
+### 5) Governance, Ticketing, and Accountability (Beyond “Log Everything”)
+Health events must turn into action. The default workflow should be: **event → alert → ticket → dispatch → resolution → postmortem**.
+
+#### Recommended workflow
+1. **Detect**: system generates an event with reason code and evidence.
+2. **Notify**: route by severity to ops and/or maintenance.
+3. **Ticket**: automatically open a maintenance ticket with device/likely root cause.
+4. **Dispatch**: assign to field tech or IT/security depending on category.
+5. **Resolve**: close ticket with fix applied and verification steps.
+6. **Review**: weekly triage of top recurring faults; monthly reliability review.
+
+#### Ownership model (example)
+- **Signals ops/engineering**: mode policies, fallback plan library, operational acceptance.
+- **Signal maintenance**: detectors, cabinet hardware, field repairs.
+- **IT/network**: comms, time sync, access control.
+- **Security**: incident response, suspected compromise handling.
+- **Vendor**: controller firmware and integration constraints (within contract).
+
+#### Retention and review cadence
+- Retain health events long enough to support trend and root cause analysis, and align retention with cyber incident response needs ([`Transportation Cybersecurity Incident Response & Management Framework (PDF)`](https://rosap.ntl.bts.gov/view/dot/57007/dot_57007_DS1.pdf)).
+- Weekly operations triage; monthly reliability report.
+
+#### KPIs
+- **MTTD** (mean time to detect)
+- **MTTR** (mean time to repair/recover)
+- **Time in FALLBACK/ISOLATED** (minutes/day)
+- **False positive rate** and **mode flap rate**
+- **Recurrence rate** of top fault categories
+
+---
+
+### 6) Exit Criteria, Operator Overrides, and Safety Lockouts
+Automatic return-to-normal is often where risk concentrates. Define explicit exit criteria and when humans must confirm.
+
+#### Auto-return criteria (examples)
+- Comms stable (no missed polls) for X minutes.
+- Detector health stable for Y cycles with no contradictions.
+- No repeated oscillations in the last Z minutes.
+
+#### Human confirmation triggers
+- Repeated mode transitions (thrash risk).
+- Any preemption failure or suspicious preemption behavior.
+- Ped service alarms or suspected conflicting indications.
+
+#### Lockout / isolation triggers
+- Suspected unsafe operation.
+- Untrusted time with conflicting telemetry.
+- Suspected compromise of comms or credentials.
+
+#### Operator UX requirements
+- One-click **isolate** and one-click **revert**, each requiring a reason code.
+- Timeline view of transitions and evidence snapshots.
+- Suggested actions (repair detector, check comms, dispatch tech, contact security).
+
+---
 
 ### Detailed Implementation Plan
 #### Phase 1: Requirements, Safety Invariants, and Failure Catalog (Weeks 1–6)
@@ -107,10 +285,71 @@ The program should scale intersection-by-intersection and then corridor-by-corri
 - ATSPM impacts: split failures, arrivals-on-green changes.
 - Safety compliance: ped service, clearance integrity.
 
-## References / Standards / Useful Sources
-- FHWA Automated Traffic Signal Performance Measures (ATSPM): https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm
-- NTCIP 1211 (Signal Control and Prioritization): https://www.ntcip.org/file/2018/11/NTCIP1211-v0224j.pdf
-- FHWA Traffic Signal Timing Manual (chapters on timing fundamentals and operational constraints): https://ops.fhwa.dot.gov/publications/fhwahop08024/fhwa_hop_08_024.pdf
+---
+
+## Implementation Checklist
+- Define controller vs supervisory responsibilities and document safety invariants that must never be violated.
+- Build a failure-mode catalog tied to real maintenance history and explicit detection signals.
+- Implement telemetry ingestion for phase states, detection, ped, preemption/TSP, comms heartbeat, and (where available) cabinet/power.
+- Implement data-quality gates and watchdog-style checks to detect comms loss and detector anomalies ([`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+- Implement FSM mode logic with hysteresis, dwell times, oscillation guard, and rate limiting.
+- Create versioned fallback templates and validate them in a twin with injected failure drills.
+- Define corridor-aware anti-cascade rules (spillback guards, upstream metering patterns).
+- Define cyber-resilient posture (access controls, identity mapping, anomaly corroboration) and integrate with incident response ([`Transportation Cybersecurity Incident Response & Management Framework (PDF)`](https://rosap.ntl.bts.gov/view/dot/57007/dot_57007_DS1.pdf)).
+- Define explicit exit criteria, auto-return rules, and lockout triggers.
+- Deploy in shadow → assisted → auto phases; run controlled “game day” drills and capture after-action reviews.
+
+## Operations Runbook (SOP)
+### Severity definitions
+- **CRITICAL**: suspected unsafe operation, conflicting indication suspicion, preemption malfunction, untrusted time with conflicting telemetry, suspected compromise.
+- **HIGH**: comms loss > threshold, widespread detector faults, repeated mode oscillations.
+- **MEDIUM**: single detector fault affecting actuation quality, intermittent comms errors.
+- **LOW**: minor telemetry missingness, non-impacting sensor anomalies.
+
+### Triage workflow (always)
+1. Confirm current mode (NORMAL/DEGRADED/FALLBACK/ISOLATED) and recent transitions in the timeline.
+2. Check comms heartbeat and last-good telemetry timestamp.
+3. Check detector health summary (stuck-on/off, abnormal max-outs/force-offs, missing data).
+4. Check ped service status and any stuck ped indicators.
+5. Check preemption/TSP event logs.
+6. Decide action: **revert**, **hold in fallback**, **isolate**, or **dispatch**.
+7. Open/attach ticket with evidence snapshot and correlation ID.
+
+### Playbooks by failure category
+#### A) Communications loss
+- Move to ISOLATED/local plan if comms are lost and the controller supports safe local operation.
+- Notify IT/network, open ticket with last-known heartbeat time.
+- Only auto-return after comms stable for the configured window and no oscillation history.
+
+#### B) Detector failure suspected
+- Confirm watchdog signals (overnight max-outs/force-offs, missing counts) and compare to field expectations ([`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+- Switch to DEGRADED (reduced reliance) or FALLBACK (fixed-time) depending on severity.
+- Dispatch maintenance for physical inspection and repair.
+
+#### C) Time quality / clock drift
+- If time is untrusted, suppress fine-grained analytics and move to conservative mode.
+- Notify IT; verify time sync source.
+- Require human confirmation before returning to NORMAL.
+
+#### D) Suspected compromise / malicious manipulation
+- Isolate the intersection (or segment) according to policy.
+- Escalate to security incident response and preserve logs.
+- Do not auto-return; require human sign-off after investigation.
+
+---
+
+## Reference Links
+### Standards / interoperability
+- [`NTCIP 1211 (Signal Control and Prioritization)`](https://www.ntcip.org/file/2018/11/NTCIP1211-v0224j.pdf)
+
+### Operations / ATSPM guidance
+- [`FHWA ATSPM (landing)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm)
+- [`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)
+
+### Cybersecurity / incident response
+- [`CISA Cybersecurity Best Practices`](https://www.cisa.gov/topics/cybersecurity-best-practices)
+- [`Transportation Cybersecurity Incident Response & Management Framework (PDF)`](https://rosap.ntl.bts.gov/view/dot/57007/dot_57007_DS1.pdf)
+- [`FHWA/USDOT Transportation Cybersecurity Resources (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop24101/fhwahop24101.pdf)
 
 ---
 

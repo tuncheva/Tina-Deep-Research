@@ -4,7 +4,9 @@
 Imagine traffic lights syncing like an orchestra, letting cars flow through greens like a smooth ocean wave – that's the green wave!
 
 ## What it is (precise)
-A **green wave** (signal progression or coordination) synchronizes traffic lights along a corridor to create "green corridors" where vehicles can travel at a consistent speed without stopping. By aligning cycle lengths, offsets, and splits, it ensures platoons of cars encounter green lights in sequence. This minimizes stops, reduces travel times, and optimizes traffic flow. The system uses pre-timed plans for predictable patterns or adaptive methods with real-time sensors to adjust for demand variations. Digital twins simulate platoon dynamics, spillback, and turning friction to test designs before deployment. In practice, it coordinates offsets to match travel times between intersections, reducing accel/decel events and emissions. Toronto's SCOOT/SCATS systems exemplify adaptive coordination, using detector data for dynamic splits and offsets, maintaining coordination under variable traffic while supporting multimodal safety.
+A **green wave** (signal progression or coordination) synchronizes traffic lights along a corridor to create "green corridors" where vehicles can travel at a consistent speed without stopping. By aligning cycle lengths, offsets, and splits, it ensures platoons of cars encounter green lights in sequence. This minimizes stops, reduces travel times, and optimizes traffic flow. The system uses pre-timed plans for predictable patterns or adaptive methods with real-time sensors to adjust for demand variations. Digital twins simulate platoon dynamics, spillback, and turning friction to test designs before deployment.
+
+Coordination is an established timing practice and is described in FHWA’s Signal Timing Manual, which also covers the role of offsets, cycle length selection, and maintaining effective plans over time ([`FHWA Traffic Signal Timing Manual (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/fhwa_hop_08_024.pdf)).
 
 ## Benefits
 Green waves significantly improve traffic efficiency and environmental sustainability, but studies warn of rebound effects where increased attractiveness may boost car use, negating gains unless paired with modal shifts:
@@ -33,7 +35,179 @@ Implementing green waves faces several hurdles:
 - **Signal connectivity**: Reliable comms (fiber/cellular) to a central system for plan downloads and monitoring.
 - **Timing management**: Plan library support (time-of-day), plus optional adaptive logic.
 - **Digital twin**: Micro/meso model calibrated to travel times, queues, and platoon behavior.
-- **Performance monitoring**: ATSPM-style dashboards to track arrivals on green, split failures, and corridor travel time reliability.
+- **Performance monitoring**: ATSPM-style dashboards to track arrivals on green, split failures, and corridor travel time reliability ([`FHWA ATSPM (landing)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm)).
+
+---
+
+### 1) Multimodal progression: objectives, constraints, and design patterns
+Coordination decisions should be framed as a corridor **multimodal service design** problem, not only a vehicle progression problem. FHWA’s Signal Timing Manual explicitly discusses coordination as part of a broader timing program and emphasizes maintaining plans and considering operational context over time ([`FHWA Traffic Signal Timing Manual — Chapter 6 (Coordination)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter6.htm)).
+
+#### Objective options (choose 1–3 primary; monitor the rest)
+- **Vehicle progression**: maximize arrivals on green (AoG), minimize stops, reduce travel time.
+- **Person-based outcomes** (recommended): minimize **person-delay** rather than vehicle-delay by weighting vehicles by occupancy and prioritizing high-capacity modes.
+- **Reliability**: reduce p95 travel time and variability (corridor reliability and bus on-time performance).
+- **Transit outcomes**: reduce bus running time and improve schedule adherence via TSP constraints and recovery strategies ([`FHWA Signal Timing Manual — Chapter 9 (Priority & Preemption)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)).
+- **Pedestrian outcomes**: reduce maximum wait, meet accessibility needs, and maintain consistent service.
+- **Bike comfort**: align progression speeds with safe/comfortable cycling speeds (and ensure cyclist detection and recall behavior works).
+- **Freight**: reduce travel time and delay for heavy vehicles (often via time-of-day plans rather than always-on priority).
+- **Emergency response**: maintain EVP readiness and safe transition/recovery behavior ([`FHWA Signal Timing Manual — Chapter 9 (Priority & Preemption)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)).
+
+#### Constraints (examples you can operationalize)
+- **Pedestrian maximum wait cap**: define a max wait (e.g., 90–120 s at key crossings) and compute it as the longest time between “ped call registered” and “WALK served,” using controller event logs when available. “Effective signal timing plans” explicitly include pedestrian timing and operations as part of the timing process ([`FHWA Traffic Signal Timing Manual — Chapter 5 (Basic timing)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter5.htm)).
+- **Ped minimums and clearance**: treat minimum WALK + clearance (FDW) as hard constraints and validate them during plan design ([`FHWA Traffic Signal Timing Manual (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/fhwa_hop_08_024.pdf)).
+- **ADA / accessibility**: require that accessible pedestrian signals (APS) and pushbutton behavior remain correct after any phasing changes (acceptance test in the field).
+- **Side-street delay cap**: set a cap for average or p95 side-street delay (or max queue) by time-of-day to prevent “mainline wins, side streets lose.”
+- **Queue storage protection**: treat available storage as a hard constraint; add “spillback risk” thresholds to block offsets/splits that cause blocking.
+
+#### Cross-street protection design patterns
+- **Split guards**: set minimum green time for cross-street phases and constrain split reductions per cycle so that progression tuning cannot starve minor movements.
+- **Queue-aware gating**: when minor-street queue exceeds a threshold (detector occupancy or video queue estimate), temporarily relax progression objective and allocate recovery green.
+- **No-block-the-box / spillback handling**: use queue detectors or downstream occupancy proxies to prevent releasing platoons into blocked downstream links.
+- **Progression speed selection**: set the progression speed to the **posted** or a **target operating speed** that does not incentivize speeding; treat “speeding signal” complaints as a formal safety risk (see Safety section).
+
+#### Corridor typologies (what changes)
+- **Downtown grid**: prioritize pedestrian delay caps, shorter cycles, and frequent service; allow weaker vehicle progression but ensure consistency and safe turning.
+- **Arterial with long spacing**: classic green-wave candidate; focus on reliable platoon travel time and spillback controls at bottlenecks.
+- **Suburban arterial with heavy turns/driveways**: progression is fragile; use more time-of-day plans and protect turn bays/queue storage.
+
+---
+
+### 2) Equity and fairness framework for corridor coordination
+A corridor green wave is a policy choice about **who gets delay, noise, emissions, and safety risk**. Make the fairness definition explicit and publish before/after reporting.
+
+#### Fairness definitions that fit signal timing
+- **Distributional fairness (delay burden)**: constrain how much delay can increase on any approach/neighborhood when mainline travel time improves.
+- **Person-throughput fairness**: evaluate outcomes by person-delay rather than vehicle-delay.
+- **Exposure fairness**: track where idling/acceleration (noise and emissions) are reduced or increased; ensure burdens are not shifted onto vulnerable neighborhoods.
+- **Safety-risk fairness**: ensure near-miss proxies and speeding do not worsen near schools, transit stops, or high-pedestrian areas.
+
+#### Practical measurement and reporting (template)
+Create a “corridor scorecard” for each time-of-day plan:
+- **By mode**: auto travel time (median/p95), bus running time and on-time performance, pedestrian delay distribution and max wait, bike travel time (if available).
+- **By movement / geography**: mainline vs side-street delay; key crossings; neighborhood segments.
+- **By time window**: AM peak, midday, PM peak, weekend.
+- **By safety proxies**: speeding distribution, red-light running proxy counts, surrogate safety metrics if available.
+
+Use ATSPM measures to standardize operational reporting; FHWA’s ATSPM guide includes common measures and use cases such as split failures and occupancy-based measures ([`FHWA ATSPM — use cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+
+#### Example policy statements you can encode
+- “No approach shall experience more than X seconds increase in p95 delay during peak periods relative to baseline.”
+- “Pedestrian max wait at designated crossings shall not exceed Y seconds in any plan.”
+- “Transit on-time performance shall not degrade; if it does, the plan must be adjusted or TSP rules changed.”
+
+---
+
+### 3) Calibration and validation protocol (digital twin + shadow mode)
+A corridor twin must be calibrated and validated before it is used to justify field timing changes. The goal is not “perfect prediction,” but **bounded error** and explicit uncertainty.
+
+#### Step-by-step calibration plan
+1. **Inventory and map**: geometry, lane counts, storage lengths, turn bay lengths, bus stop locations, school crossings, pedestrian volumes, and all phase/interval definitions.
+2. **Demand and turning movement inputs**: build time-of-day demand profiles and turning proportions; document missing turning counts and how they are inferred.
+3. **Signal control replication**: replicate coordination mode, offsets, actuated behavior, recalls, max greens, and pedestrian service rules.
+4. **Behavioral parameters**: calibrate saturation flow, start-up lost time, lane-change/turn friction, and speed distribution.
+5. **Oversaturation and spillback**: explicitly calibrate queue spillback and blocking behavior at known bottlenecks.
+
+Calibration guidance and the importance of documentation are emphasized in simulation calibration references such as the JRC calibration guide ([`JRC — The Calibration of Traffic Simulation Models (PDF)`](https://publications.jrc.ec.europa.eu/repository/bitstream/JRC68403/lbna25188enn.pdf)).
+
+#### Validation metrics (shadow-mode gates)
+Validate at multiple levels:
+- **Travel time**: median and p95 corridor travel time (probe data or Bluetooth/Wi‑Fi travel time).
+- **Queue length / spillback**: max queue at critical approaches and spillback event frequency.
+- **Arrivals on green**: match AoG patterns directionally by segment (field ATSPM vs simulated AoG).
+- **Split failures**: match occurrence rates for critical phases; ATSPM defines split failures and related occupancy ratios (GOR/ROR) used to identify unmet demand ([`FHWA ATSPM (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/fhwahop20002.pdf)).
+- **Detector health**: ensure field detector QA is stable before trusting validation results (otherwise you are validating against measurement error).
+
+#### Suggested acceptance thresholds (use as starting gates)
+Use explicit go/no-go gates (and tighten as you mature):
+- **Travel time error**: median and p95 within **10–15%** on key segments (consistent with the internal tolerance already stated in this brief) before using the twin to approve timing changes.
+- **Queue validation**: reproduce the *presence/absence* of spillback at known hot spots and match peak queue order-of-magnitude.
+- **Event reproduction**: if split failures occur in field peaks, the model should reproduce them under baseline timing; otherwise, it may be underestimating demand.
+
+These gates complement (not replace) standard signal timing plan maintenance practices described by FHWA, including ongoing monitoring and retiming triggers ([`FHWA Traffic Signal Timing Manual — Chapter 8 (Maintain effective timing)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter8.htm)).
+
+#### Partial detection (probe + sparse detectors)
+- Use probe travel times for corridor-level validation while using sparse detectors for volume/capacity checks.
+- Quantify uncertainty: report confidence bands when detection is sparse and require more conservative constraints (tighter side-street caps, stronger spillback guards) until detection improves.
+
+---
+
+### 4) Interaction with Transit Signal Priority (TSP) and Emergency Vehicle Preemption (EVP)
+TSP and EVP are not edge-cases; they are constraints that can disrupt offsets and degrade progression. FHWA’s Signal Timing Manual describes both priority and preemption and notes that priority algorithms modify green allocation within constraints such as coordination settings and maximum green ([`FHWA Traffic Signal Timing Manual — Chapter 9`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)).
+
+#### How TSP disrupts offsets and what to do
+- **Disruption mechanism**: green extensions, early green, or phase insertions can shift the coordinated phase end time, which changes effective offsets.
+- **Mitigation policies**:
+  - **Conditional priority** (e.g., only late buses): reduces disruption frequency and improves regularity (common practice described in TSP literature and agency handbooks; see e.g. the “conditional vs unconditional” framing in TSP materials ([`A Sophisticated Transit Signal Priority System – How it Works (PDF)`](http://conf.tac-atc.ca/english/resourcecentre/readingroom/conference/conf2006/docs/s009/stewart1.pdf))).
+  - **Priority windows**: only grant TSP during parts of the cycle where offset disruption is bounded.
+  - **Max disruption limits**: cap green extension seconds per cycle and cap consecutive priority actions.
+  - **Recovery strategies**: after a TSP action, apply coordination recovery (hold/recover) to return to planned offsets.
+
+#### EVP (preemption) disruption and recovery
+- **Disruption mechanism**: preemption interrupts normal operations to serve emergency vehicles; offsets are effectively broken for that cycle.
+- **Recovery strategies**:
+  - Use controller recovery modes to return to coordination safely and predictably (field-tested via drill scenarios).
+  - Log each preemption event and measure “recovery time to coordination.”
+
+#### Implementation patterns to keep progression intact
+- **Compensation logic**: after priority/preemption, gradually restore offsets (avoid sudden jumps that create stops).
+- **Coordination boundaries**: define which intersections participate in coordination during heavy TSP/EVP activity.
+
+#### Monitoring requirements
+Use consistent monitoring dashboards:
+- **Priority call frequency** (by route, time-of-day).
+- **Progression degradation**: changes in AoG, stops/vehicle, and travel time reliability.
+- **Recovery time**: time to return to normal AoG distribution post-event.
+
+---
+
+### 5) Operational governance: roles, workflows, versioning, and rollback
+Coordination succeeds when treated as a program with staffing, change control, and monitoring—not a one-off project. FHWA provides staffing guidance for traffic signal operations and maintenance programs and discusses maintaining timing plans as an ongoing activity ([`FHWA Staffing Guidelines (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop09006/fhwahop09006.pdf), [`FHWA Signal Timing Manual — Chapter 8`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter8.htm)).
+
+#### Recommended RACI-style roles (example)
+- **Accountable**: traffic engineering program owner (approves plan releases and constraints).
+- **Responsible**:
+  - timing engineer/modeler (plan design, twin analysis)
+  - operations/TMC lead (activation, monitoring, incident response)
+  - signal maintenance lead (field readiness, detector health)
+  - IT/network lead (comms, time sync, security)
+  - transit agency liaison (TSP policies and operations)
+- **Consulted**: safety office, ADA/accessibility coordinator, emergency services (EVP requirements).
+- **Informed**: public information officer, corridor stakeholders.
+
+#### Change management workflow
+- **Plan library versioning**: version each time-of-day plan and store metadata (corridor, intersections, offsets/splits/cycle, constraints, release date).
+- **Approval gates**: require sign-off on (1) constraints, (2) ped/ADA checks, (3) side-street caps, (4) TSP/EVP behavior.
+- **Decision log**: record why changes were made, based on metrics (pairs naturally with idea 20 “explainable signals”).
+- **Rollback playbook**: define how to revert (previous plan or free operation), who can do it, and what triggers rollback.
+- **Field feedback loop**: track complaints and field observations as structured tickets tied to plan versions.
+
+#### Staffing needs and cadence
+- **Daily/weekly**: detector health and ATSPM alarms review; investigate split failures and spillback signals.
+- **Monthly**: KPI scorecards, equity check, plan drift review.
+- **Seasonal / construction**: retiming and revalidation.
+
+---
+
+### 6) Safety evaluation and mitigations
+Coordination can improve safety by reducing stop-and-go, but it can also **incentivize speeding** if the progression speed is set too high or if drivers “race the green.” Safety should be part of go/no-go.
+
+#### What to measure
+- **Speed distributions** (not just average): 85th percentile speed and “excessive speeding” share by segment.
+- **Red-light running proxies**: high-speed arrivals on red; violation counts where enforcement/video is available.
+- **Turning conflicts / near-misses**: surrogate safety measures such as TTC and PET can be computed from trajectories or simulation; FHWA documents surrogate safety measures derived from microscopic models ([`FHWA — Surrogate Safety Measures From Traffic Simulation Models (PDF)`](https://ntlrepository.blob.core.windows.net/lib/38000/38000/38015/FHWA-RD-03-050.pdf)).
+- **Rear-end risk proxies**: hard braking events (if probe/telematics data is available) and high red occupancy.
+
+#### Countermeasures if speeding risk increases
+- Reduce progression speed (target speed) and adjust offsets.
+- Use shorter cycles and stronger progression “bands” that reward steady speed rather than racing.
+- Coordinate with speed management/enforcement teams; document the safety impact assessment and revisit after activation.
+
+#### Instrumentation options
+- **Speed probes**: connected vehicle probe speeds or third-party probe datasets.
+- **Radar**: spot speed by segment.
+- **Video analytics**: turning conflicts and near-misses at key intersections.
+
+---
 
 ### Detailed Implementation Plan
 #### Phase 1: Program Setup and Corridor Selection (Weeks 1–6)
@@ -140,6 +314,7 @@ Deploying green wave systems requires substantial investment but offers long-ter
 - **Legal/Ethical Aspects**: Privacy protection in data collection, ensuring equitable benefits across demographics.
 
 ## Technical Mechanics
+
 ### Key Parameters
 - **Cycle length**: Total time per phase (e.g., 90s).
 - **Offsets**: Timing shifts between intersections.
@@ -169,6 +344,35 @@ Digital twins propose combinations satisfying constraints like pedestrian minimu
 - Stops/vehicle, red delays.
 - Side-street/ped delays.
 - Queue spillback events.
+
+---
+
+## Implementation Checklist
+- Define corridor objectives (include at least one person/multimodal objective) and explicit constraints (ped max wait, side-street delay/queue caps).
+- Create a multimodal corridor scorecard (by mode, movement, time-of-day, geography).
+- Repair/validate detection and comms; implement detector QA and time-sync checks.
+- Stand up ATSPM reporting; monitor split failures and occupancy-based measures ([`FHWA ATSPM (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/fhwahop20002.pdf)).
+- Build and calibrate the twin; validate travel time and queue/spillback patterns before approving timing changes.
+- Design time-of-day plans with safe progression speeds; verify ped/ADA behavior.
+- Define TSP/EVP policies (conditional priority, max disruption limits, recovery rules) and test in the twin.
+- Run shadow mode and compare expected vs observed metrics before activation.
+- Deploy with assisted activation and a tested rollback plan.
+- Monitor safety proxies (speed distributions, red-running proxies, near-miss metrics where available) and require safety sign-off for expansion.
+- Establish change control (versioned plan library, approval gates, decision logs) and a monthly review cadence.
+
+## Reference Links
+- [`FHWA Traffic Signal Timing Manual (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/fhwa_hop_08_024.pdf)
+- [`FHWA Traffic Signal Timing Manual — Chapter 5 (Basic timing)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter5.htm)
+- [`FHWA Traffic Signal Timing Manual — Chapter 6 (Coordination)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter6.htm)
+- [`FHWA Traffic Signal Timing Manual — Chapter 8 (Maintain effective timing)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter8.htm)
+- [`FHWA Traffic Signal Timing Manual — Chapter 9 (Priority & Preemption)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)
+- [`FHWA ATSPM (landing)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm)
+- [`FHWA ATSPM — use cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)
+- [`FHWA ATSPM (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/fhwahop20002.pdf)
+- [`FHWA Staffing Guidelines (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop09006/fhwahop09006.pdf)
+- [`JRC — The Calibration of Traffic Simulation Models (PDF)`](https://publications.jrc.ec.europa.eu/repository/bitstream/JRC68403/lbna25188enn.pdf)
+- [`FHWA — Surrogate Safety Measures From Traffic Simulation Models (PDF)`](https://ntlrepository.blob.core.windows.net/lib/38000/38000/38015/FHWA-RD-03-050.pdf)
+- [`A Sophisticated Transit Signal Priority System – How it Works (PDF)`](http://conf.tac-atc.ca/english/resourcecentre/readingroom/conference/conf2006/docs/s009/stewart1.pdf)
 
 ## Key Terms and Explanations
 - **Green Wave**: Coordinated traffic signals creating a "wave" of green lights for smooth vehicle flow without stops.
