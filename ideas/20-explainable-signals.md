@@ -1,120 +1,103 @@
 # 20) Explainable Signals (Auditable Reasons for Timing Changes)
 
-## Brief Description
-Explainable signals provide auditable reasons for timing changes, enhancing transparency and trust.
+## Catchy Explanation
+Like a referee explaining a call, an explainable signal doesn’t just change timing—it records a short, auditable “why” with evidence.
 
-## Analogical Reference
-Like a referee explaining a call in a game, signals justify their decisions with evidence.
+## What it is (precise)
+**Explainable signals** attach an auditable explanation to each non-trivial timing decision (plan switch, major split/offset change, mode transition, priority action). Explanations are not free-form storytelling; they are structured **reason codes + evidence** generated at decision time:
+- reason code taxonomy (controlled vocabulary)
+- key inputs (sensor/health signals, thresholds)
+- predicted deltas (twin or model outputs)
+- constraints that were binding (e.g., ped mins)
+- operator overrides and notes
 
-## Comprehensive Information
+This supports accountability, faster diagnosis, and governance aligned with risk management frameworks.
 
-Explainable Signals ensure every significant timing change in traffic lights comes with an auditable reason code and evidence, grounded in NIST's AI Risk Management Framework for accountability and transparency. This framework positions Explainable and Interpretable as key trustworthiness traits, aligning with organizational policies for monitoring, auditing, and change management. For instance, instead of a signal simply switching to red, it might log: "Reason Code 104: Pedestrian Surge Detected. Evidence: Sensor count increased by 150% in 2 minutes. Predicted Outcome: Reduces near-miss incidents by 40% without exceeding max green time."
+## Benefits
+- **Trust and accountability**: operators and auditors can see why changes happened.
+- **Faster incident diagnosis**: root cause analysis becomes searchable.
+- **Safer automation**: discourages “mystery optimization” and supports rollback.
+- **Compliance support**: easier to document decision processes.
 
-Digital twins enhance this by providing counterfactual explanations, predicting outcomes like spillback risks or queue reductions. For example, a twin might simulate: "If we maintain current cycle, spillback probability rises to 60% in 8 minutes, causing gridlock." This makes decisions grounded in data, improving operator trust and public acceptance.
+## Challenges
+- **Information overload**: explanations must be brief by default.
+- **Post-hoc risk**: explanations must be generated with immutable evidence at decision time.
+- **Standardization**: codes should be consistent across vendors and corridors.
+- **Privacy**: evidence must avoid exposing personal data.
 
-Research from Nature shows integrating XAI with YOLOv5 in autonomous vehicles improves safety and trust, achieving 99% accuracy with 1% miss rate by explaining object detections. Wiley's work on explainable reinforcement learning for traffic signals reduces complexity in RL models, making them more adoptable by providing insights into policy choices, such as why a particular action was taken to optimize flow.
+## Implementation Strategies
 
-ArXiv studies reveal XAI identifies key indicators like Longest Stop Duration and Total Jam Distance for anomaly detection in traffic flows, highlighting challenges like transitional data issues where post-hack recovery phases mimic normal traffic, and stealth attacks in low-volume conditions that evade detection due to lack of congestion patterns.
+### Infrastructure Needs
+- **Explainability contract**: which actions require explanations and at what level of detail.
+- **Reason code taxonomy**: controlled vocabulary (e.g., 100 safety, 200 efficiency, 300 faults).
+- **Append-only decision log**: timestamps, inputs, action, constraints, reason, evidence.
+- **Dashboards**: “why did this change at 17:20?” query UI.
+- **Twin-backed counterfactuals** (optional): “if we did nothing, spillback risk rises to 60%.”
 
-Implementation involves phased rollouts: defining contracts (e.g., which changes require explanation), logging (append-only decision logs), twin-backed counterfactuals (computing deltas like "Plan B reduces p95 queue by 35%"), and governance (periodic audits). Levels range from basic codes (e.g., "101: Detector Failure") to narrative provenance (full stories with operator notes).
+### Detailed Implementation Plan
+#### Phase 1: Define the Explainability Contract and Taxonomy (Weeks 1–4)
+The agency should begin by defining which actions require explanations (for example, any plan switch, any split change above a threshold, any mode transition, and any priority action), because explainability must be scoped to be operationally feasible. The team should define a minimum evidence schema that can be generated automatically at decision time, including timestamps, location, current mode, triggering signals, thresholds crossed, and binding constraints, because post-hoc explanations are not defensible. The team should define a controlled reason code taxonomy that is small enough to be usable (for example, 10–50 codes) and should include categories for safety, efficiency, faults, policy compliance, and operator override.
 
-Infrastructure needs include decision logs (storing timestamps, inputs, overrides), taxonomies (controlled vocabularies for reasons), evidence capture (KPIs, thresholds, sensor health), and review tools (dashboards for "why did cycle change at 17:20?").
+- **Roles**: program owner (scope and governance), operations (usability), traffic engineering (action definitions), data/engineering (schema), privacy/security (evidence constraints).
+- **Deliverables**: explainability contract, reason code taxonomy v0, evidence schema, and retention policy.
+- **Risks**: taxonomy becomes too large; evidence schema requires data that is not available.
+- **Acceptance checks**: contract is signed off and every required evidence field has a defined data source.
 
-From scraped sources, explainable RL frameworks optimize traffic flow with interpretable decisions, outperforming traditional methods by 5% in accuracy through better policy understanding. This builds on AI RMF Playbook's emphasis on governance, including documented policies, monitoring, and change management.
+#### Phase 2: Implement Append-Only Logging and the Operator “Timeline” UI (Weeks 5–10)
+The engineering team should implement an append-only decision log that captures every explained action in a tamper-resistant way (for example, write-once storage or integrity checks), because auditability depends on evidence integrity. The team should build an operator-facing timeline UI that allows searching by intersection, corridor, time range, and reason code, because the primary operational value is being able to answer “what changed and why” quickly. The team should integrate log entries with operator notes and overrides so that human decisions are recorded in the same system.
 
-Real-World Examples include cities using explainable systems for incident response, where operators see reasons like "Emergency Vehicle Priority: Ambulance detected, green extended by 15s to avoid delay." Case studies from FHWA show reduced operator overrides by 25% with explanations, as decisions become more justifiable.
+- **Roles**: software engineer (logging service), data engineer (storage), operations (UI requirements), security (integrity controls), QA (testing).
+- **Deliverables**: operational logging pipeline, timeline UI, and access control rules.
+- **Risks**: logs become noisy without good filtering; weak access controls expose sensitive operational data.
+- **Acceptance checks**: >95% of relevant actions appear in the log with valid schema and the UI supports rapid queries.
 
-Technical Details involve XAI techniques like occlusion sensitivity (masking inputs to see impact) and LIME (explaining local predictions), applied to CNNs for traffic prediction. For instance, in a model misclassifying hacked signals, XAI reveals focus on non-congestion features, prompting retraining.
+#### Phase 3: Evidence Quality, Counterfactuals, and Integration with Decision Systems (Weeks 11–18)
+The team should enrich explanations with predicted KPI deltas and binding constraints whenever a decision is driven by a model or a twin, because operators need to see what the system thought would happen. If a digital twin is available, the team can add counterfactual summaries such as “if no change, spillback probability increases,” but it should keep counterfactuals optional and clearly labeled with uncertainty. The team should integrate explainability into each decision-producing subsystem (what-if tools, fast-forward twin, self-healing mode transitions, priority credits) so explanations are consistent rather than implemented as an afterthought.
 
-Future Scenarios in 5 years: Signals explain changes via apps, reducing confusion. In 15 years: Full AI integration with human oversight, where signals self-explain to regulators for compliance.
+- **Roles**: modeling team (predicted deltas), software engineer (integration), operations (usability), privacy reviewer (evidence minimization).
+- **Deliverables**: evidence-enriched explanation records, counterfactual integration (optional), and updated reason code usage guidance.
+- **Risks**: predicted deltas may be misleading if state estimation is weak; counterfactuals can increase compute and complexity.
+- **Acceptance checks**: predicted deltas are present for model-driven actions and the system clearly indicates confidence/uncertainty.
 
-Challenges include verbosity (too much text overwhelming operators) mitigated by one-sentence summaries, and post-hoc risks (falsified explanations) addressed by immutable evidence generation at decision time.
+#### Phase 4: Governance, Audits, and Continuous Improvement (Ongoing)
+The agency should establish a governance process where operators and engineers review samples of decision logs weekly and run completeness audits monthly, because explainability must remain reliable as systems evolve. The team should track override patterns and reason code distributions to identify common failure modes and training needs, and it should refine taxonomies and evidence schema carefully through versioned changes. The agency should also publish internal (and optionally public) summaries that demonstrate accountability without exposing sensitive details.
 
-Benefits extend to compliance with regulations like GDPR for data transparency, and improved cybersecurity by making anomalies explainable.
+- **Roles**: audit owner (governance), operations (weekly sampling), engineering (schema maintenance), analyst (trend reporting), privacy/security (review).
+- **Deliverables**: audit reports, taxonomy updates (versioned), and periodic governance summaries.
+- **Risks**: audits become checkbox exercises; taxonomy drift reduces comparability across time.
+- **Acceptance checks**: audit completeness stays above target and operators report reduced time-to-diagnosis for incidents.
 
-## Upsides and Downsides
+### Choices
+- **Reason codes only**: minimal overhead.
+- **Reason + evidence**: recommended baseline.
+- **Narratives + counterfactuals**: highest value but more work.
 
-### Positive Aspects on People's Lives in 5 Years
-- Enhanced Safety: Reduced accidents by up to 20% through better compliance and understanding, saving lives and injuries.
-- Efficiency: Faster incident resolution and smoother traffic flow, reducing daily commute times and stress.
-- Trust Building: Increased public confidence in automated systems, leading to wider adoption and less frustration at intersections.
+## Technical Mechanics
 
-### Positive Aspects on People's Lives in 15 Years
-- Equitable Mobility: Signals optimize for sustainability, equity, and integration with autonomous vehicles, creating fairer access to cities and economic opportunities.
-- Economic Savings: Billions in losses from congestion avoided, boosting productivity and quality of life.
-- Ethical AI Integration: Fully transparent systems ensure human oversight, preventing biases and promoting societal benefits like reduced emissions.
+### Key Parameters
+- Reason code taxonomy size (10–50 codes)
+- Evidence schema fields (health, thresholds, predicted deltas)
+- Retention policy
 
-### Downsides in 5 and 15 Years
-- Costs and Overhead: Higher implementation and maintenance expenses, with data privacy risks from logging detailed explanations.
-- Over-Reliance and Vulnerabilities: Dependency on AI could lead to system failures or cyberattacks, exacerbating disruptions.
-- Job Impacts: In 15 years, potential displacement of human traffic operators, shifting roles to AI oversight.
+### Guardrails
+- Immutable evidence at decision time.
+- Privacy-preserving evidence (aggregates).
+- Explanations must not justify constraint violations.
 
-### Hard Things People Will Have to Overcome When Getting Used to It
-- Adaptation to New Interfaces: Operators must learn to interpret reason codes and evidence, requiring training to avoid misinterpretation.
-- Standardization Challenges: Aligning codes across vendors and ensuring portability, with risks of post-hoc storytelling if evidence isn't immutable.
-- Ethical and Privacy Concerns: Balancing transparency with personal data protection, managing vast data streams, and adapting to dynamic urban changes.
+## MVP Deployment
+- 10–20 reason codes.
+- Log all plan switches and mode changes.
+- One timeline UI + monthly audit.
 
-## Implementation Plan (Phased)
-### Phase 0 — Define the Explainability Contract (2–4 Weeks)
-- Define explainable actions (e.g., cycle changes, mode switches) and reason codes (e.g., 101: Pedestrian Surge, 102: Spillback Risk).
-- Specify evidence fields like sensor thresholds and predicted outcomes.
-- Involve stakeholders: traffic engineers, safety officers, and data privacy experts to ensure compliance.
+## Evaluation
+- % of changes with valid reason + evidence (target >95%).
+- Mean time to diagnose incidents.
+- Operator override rate change.
 
-### Phase 1 — Logging + Dashboards (4–8 Weeks)
-- Implement append-only decision logs capturing before/after states, timestamps, and operator overrides.
-- Develop operator UIs with one-screen feeds showing last changes, reasons, and expandable evidence.
-- Integrate with existing ATMS for real-time data feeds.
+## References / Standards / Useful Sources
+- NIST AI RMF 1.0: https://doi.org/10.6028/NIST.AI.100-1
+- NIST AI RMF Playbook (PDF): https://airc.nist.gov/docs/AI_RMF_Playbook.pdf
 
-### Phase 2 — Twin-Backed Counterfactuals (6–12 Weeks)
-- Compute predicted KPI deltas (e.g., queue reduction by 35%) and risk flags (e.g., spillback probability).
-- Use simulations to generate narratives like "Switching plans reduces max delay from 120s to 80s."
-- Validate with historical data to ensure accuracy.
+---
 
-### Phase 3 — Governance + Audits (Ongoing)
-- Establish review cadences: weekly operator sampling, monthly audits for evidence completeness.
-- Track operator overrides to refine thresholds, preventing clustering around poor decisions.
-- Integrate with organizational policies from AI RMF Playbook for monitoring and change management.
-
-## Technical Details
-- Reason Codes: Controlled vocabulary (e.g., 100-series for safety, 200-series for efficiency).
-- Evidence Capture: Immutable fields generated at decision time, including sensor health and twin predictions.
-- XAI Integration: Techniques like SHAP for feature importance in ML models, explaining why certain inputs drove the decision.
-- Guardrails: Policy rules preventing changes that violate safety minima, with automatic rollbacks.
-
-## Real-World Examples
-- In a city pilot, explainable signals reduced public complaints by 30% by providing reasons like "Extended green for transit to maintain schedule."
-- FHWA case studies show explainable systems improving incident response times by 25%, as operators trust automated suggestions.
-- European deployments use XAI for GDPR compliance, logging explanations without revealing personal data.
-
-## Stakeholder Impacts
-- Operators: Gain confidence with clear rationales, reducing stress and improving decision quality.
-- Public: Builds trust in smart cities, especially in diverse communities wary of AI.
-- Regulators: Easier audits and compliance with transparency laws.
-- Vendors: Standardized reason codes facilitate interoperability across controllers.
-
-## Future Scenarios
-- In 5 Years: Signals explain changes via public dashboards, reducing confusion during events.
-- In 15 Years: AI systems self-generate and verify explanations, integrating with autonomous vehicles for coordinated decisions.
-- Potential Risks: Over-explanation leading to information overload; mitigated by customizable detail levels.
-
-## MVP (Smallest Useful Deployment)
-- Reason-code taxonomy (10-20 codes) with evidence schema.
-- Log non-trivial changes (mode switches, cycle changes) with one-screen feed.
-- Monthly audits sampling 50 events for completeness.
-
-## Open Questions
-- What is the minimal evidence set that remains useful without creating a logging burden?
-- How to align reason codes across vendors for portability and consistency?
-- How to prevent post-hoc storytelling by ensuring evidence is immutable and generated at decision time?
-
-## Evaluation Metrics
-- Percentage of changes with valid reason + evidence (target: >95%).
-- Mean time to diagnose incidents (before/after implementation).
-- Operator override rates (and categorized reasons).
-- Audit findings: percentage of missing/incorrect evidence fields.
-- Public trust surveys: pre/post adoption.
-
-## Costs and ROI
-- Development: $100k-$200k for logging and UIs.
-- Annual Ops: $50k for audits and maintenance.
-- ROI: Payback in 6-12 months via reduced overrides and faster resolutions, with long-term savings in liability reduction.
+Cross-links: Related ideas include operator option menu, what-if button, and self-healing intersections.

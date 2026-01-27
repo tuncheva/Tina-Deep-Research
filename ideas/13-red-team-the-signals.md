@@ -1,154 +1,103 @@
 # 13) Red-Team the Signals: Adversarial Testing for Resilience
 
-## Brief Description
-Red-team the signals involves adversarial testing to identify and mitigate vulnerabilities in traffic control.
-
-## Analogical Reference
-Like hackers testing software defenses, red-teaming simulates attacks to strengthen signal security.
-
-## Comprehensive Information
-Using digital twins to simulate attacks like spoofing or jamming, this approach tests mitigations and builds response playbooks for resilience.
-
-## Upsides and Downsides
-
-### Positive Aspects on People's Lives in 5 Years
-- Safer Systems: Proactive security prevents disruptions, reducing accidents.
-- Preparedness: Better incident response saves time and resources.
-
-### Positive Aspects on People's Lives in 15 Years
-- Cyber-Resilient Cities: Anticipatory defenses ensure continuous, safe traffic flow.
-
-### Downsides in 5 and 15 Years
-- High Costs: Expertise and simulations are expensive.
-- Resource Intensity: Ongoing testing requires significant effort.
-
-### Hard Things People Will Have to Overcome When Getting Used to It
-- Realistic Simulations: Accurately modeling real threats.
-- Training Needs: Educating teams on red-teaming processes.
-- Coverage Limits: Not all scenarios can be anticipated.
+## Catchy Explanation
+Before real attackers find the weak spots, you hire your own “attackers” and break the system in a simulator—so the real intersection stays safe.
 
 ## What it is (precise)
-Stress-test signal control and inputs in a digital twin to find vulnerabilities, measure impacts, and develop mitigations. This structured red-team program simulates adversarial scenarios such as inductive loop spoofing, video glare effects, comms delays, and CV data spoofing to quantify effects on queues, safety, and throughput. It builds detection rules, response playbooks, and graded degradation modes, ensuring safe fallbacks before real-world deployment. The twin allows repeatable testing of mitigations like plausibility checks, sensor fusion, and conservative modes, creating a continuous improvement cycle for cybersecurity and resilience.
+**Red-teaming the signals** is a structured adversarial testing program that uses a digital twin and lab setups to simulate failures and attacks against signal inputs, controllers, and communications. The goal is to identify vulnerabilities, quantify impacts (queues, safety proxies, corridor breakdown), and validate mitigations (sensor fusion, plausibility checks, graded degradation, secure operations). Typical scenarios include detector spoofing, video glare/occlusion, comms delay/jamming, and connected-vehicle data spoofing. Outputs are: an attack library, detection rules, response playbooks, and audited recovery modes.
 
 ## Benefits
-Enhances security and resilience:
-- **Proactive Defense**: Identifies weaknesses early, preventing real-world exploits; builds institutional knowledge.
-- **Impact Quantification**: Measures attack effects on throughput, delays, and safety; informs risk assessments.
-- **Mitigation Testing**: Validates responses like detection rules and fallbacks; reduces deployment risks.
-- **Operational Readiness**: Builds response playbooks for operators; improves incident handling confidence.
+- **Proactive defense**: finds weaknesses before deployment or exploitation.
+- **Impact quantification**: turns “security risk” into measurable operations/safety impacts.
+- **Mitigation validation**: tests fallbacks and detection thresholds safely.
+- **Operator readiness**: drills and playbooks reduce incident response time.
 
 ## Challenges
-Requires expertise and resources:
-- **Complexity**: Modeling attacks realistically.
-- **False Positives**: Over-sensitive detection.
-- **Resource Intensive**: Ongoing simulations.
-- **Coverage**: Can't simulate everything.
+- **Realism**: simulating credible attacks takes expertise.
+- **Coverage limits**: cannot model everything.
+- **False alarms**: aggressive detection harms operations.
+- **Ongoing cost**: red-teaming is not a one-off exercise.
 
 ## Implementation Strategies
+
 ### Infrastructure Needs
-- Threat models: Realistic attack scenarios.
-- High-fidelity twin: Accurate controller/detection.
-- Anomaly monitoring: Health checks.
-- Response modes: Safe fallbacks.
+- **Threat model + asset inventory**: controllers, comms, detectors, CV interfaces.
+- **Attack library**: repeatable scenarios and scripts.
+- **High-fidelity twin**: ability to inject manipulated sensor streams.
+- **Monitoring**: anomaly detection, health checks, ATSPM metrics.
+- **Response modes**: graded degradation and safe fallback plans.
 
 ### Detailed Implementation Plan
-#### Phase 1: Asset Identification (Weeks 1-3)
-- Define critical assets; unacceptable outcomes.
-- Team: Security experts.
-- Budget: $50k.
-- Risks: Missed threats.
-- Timeline: 3 weeks; Deliverable: Threat model.
+#### Phase 1: Threat Modeling and Test Scope Definition (Weeks 1–3)
+The agency should begin by inventorying the assets that can be attacked or that can fail in adversarial ways, including detector channels, video analytics pipelines, controller firmware, comms links, and any connected-vehicle interfaces. The team should define unacceptable outcomes in operational and safety terms, such as sustained spillback, blocked-box events, pedestrian service violations, or loss of preemption behavior, because these outcomes define what “impact” means. The security team should then prioritize threats by likelihood and impact and should define a bounded test scope that is realistic for the agency’s maturity level.
 
-#### Phase 2: Attack Library (Weeks 4-12)
-- Build spoofing, jamming scenarios.
-- Team: Analysts.
-- Budget: $150k.
-- Risks: Incomplete library.
-- Timeline: 9 weeks; Deliverable: Library.
+- **Roles**: security lead (threat model), traffic engineering (impact definitions), IT/network (comms architecture), operations (real-world failure history), vendor/ITS engineer (controller/CV specifics).
+- **Deliverables**: threat model, prioritized test plan, and an “impact metric” definition document.
+- **Risks**: threat model is too theoretical; scope is too broad to execute.
+- **Acceptance checks**: top threats are prioritized and mapped to measurable impact metrics.
 
-#### Phase 3: Mitigation Design (Weeks 13-22)
-- Test mitigations in twin; design responses.
-- Team: Engineers.
-- Budget: $200k.
-- Risks: Ineffective fixes.
-- Timeline: 10 weeks; Deliverable: Mitigations.
+#### Phase 2: Build a Repeatable Attack and Fault Injection Library (Weeks 4–12)
+The engineering team should build a versioned library of test scenarios that includes both malicious attacks and realistic “adversarial-like” faults, because many operational vulnerabilities look like attacks (spoofed detectors) but can also occur due to failures (stuck detectors). The library should include scenarios such as detector spoofing/stuck-on, video occlusion/glare, delayed or dropped comms, time-sync drift, and (where applicable) CV message spoofing or corrupted SPaT/MAP alignment. Each scenario should specify how it is injected, how long it lasts, what evidence should be observed in telemetry, and what “success” looks like for detection and response.
 
-#### Phase 4: Operational Drills (Weeks 23-32)
-- Run periodic drills; track metrics.
-- Team: Ops.
-- Budget: $100k.
-- Risks: Drill fatigue.
-- Timeline: 10 weeks; Deliverable: Playbooks.
+- **Roles**: security engineer (attack design), software engineer (injection tooling), modeler (twin integration), QA engineer (scenario harness).
+- **Deliverables**: versioned attack library, injection tooling, and scenario-level evaluation metrics.
+- **Risks**: unrealistic injection profiles; insufficient instrumentation to detect injected anomalies.
+- **Acceptance checks**: scenarios are reproducible, and telemetry captures expected symptoms.
 
-#### Phase 5: Continuous Improvement (Ongoing)
-- Update based on new threats; audits.
-- Budget: $80k annual.
-- Timeline: Continuous.
+#### Phase 3: Mitigation Design and Twin Validation (Weeks 13–22)
+The team should design mitigations that match real signal operations, such as plausibility checks across sensors, health scoring, dwell times and hysteresis for mode changes, secure communications hardening, and conservative fallback plans. The team should validate each mitigation in the twin against the attack library and should measure both detection performance (time-to-detect, false positives) and operational impact (queues, split failures, safety proxies), because a mitigation that stops attacks but causes constant fallbacks is not viable. The team should document which mitigations are mandatory for production deployment and which are optional enhancements.
+
+- **Roles**: traffic engineering (fallback plans), security (controls), software engineer (implementation), modeler (validation), operations (workflows).
+- **Deliverables**: mitigation package, tuned thresholds, twin validation report, and safety/ops sign-off.
+- **Risks**: mitigations are too sensitive and increase false alarms; mitigations conflict with performance goals.
+- **Acceptance checks**: mitigations reduce impact under attack scenarios while keeping false positives within acceptable bounds.
+
+#### Phase 4: Operational Drills and “Game Day” Exercises (Weeks 23–32)
+The agency should run tabletop drills that walk operators through detection, escalation, fallback activation, and recovery steps, because response playbooks are as important as technical defenses. The team should then run controlled “game day” exercises in shadow mode or in a lab/testbed environment, where injected anomalies are applied and the organization practices response without affecting the public. After each drill, the team should conduct an after-action review and update the playbooks, thresholds, and training materials.
+
+- **Roles**: operations (drill participants), security (facilitation), traffic engineering (plan changes), IT/network (incident response), analyst (metrics).
+- **Deliverables**: response playbooks, drill reports, training materials, and updated mitigations.
+- **Risks**: drills may be skipped due to operational pressure; playbooks may not be maintained.
+- **Acceptance checks**: operators can follow playbooks quickly, and drill outcomes result in concrete system updates.
+
+#### Phase 5: Continuous Improvement and Regression Testing (Ongoing)
+The agency should treat red-teaming as a continuous program by running a scheduled regression suite whenever controller firmware, detection systems, or optimization logic changes. The team should add new scenarios based on real incidents and on changes in the threat landscape, and it should maintain trend reporting on detection performance and operational impacts. Over time, the program should integrate into procurement and acceptance testing so new deployments must pass the red-team suite before becoming operational.
+
+- **Roles**: program owner (governance), security (regression suite), engineering (maintenance), procurement/vendor manager (acceptance requirements), operations (feedback).
+- **Deliverables**: recurring regression reports, updated scenario library, and procurement acceptance criteria.
+- **Risks**: program loses funding; testbed diverges from production reality.
+- **Acceptance checks**: regression tests run on schedule and findings are remediated with tracked tickets.
 
 ### Choices
-- **Basic Attacks**: Simple spoofing.
-- **Advanced**: CV jamming.
-- **Automated**: AI-driven simulations.
-
-## Future Impacts and Predictions
-Red-teaming will prevent 60% of cyber incidents in 5 years. In 15 years, AI anticipates attacks.
-
-### Comparison Tables: Upsides vs Downsides
-
-| Time Horizon | Aspect | Upsides | Downsides |
-|--------------|--------|---------|-----------|
-| **In 5 Years (Post-Implementation)** | **Security** | Proactive defenses. | Skill requirements. |
-| | **Resilience** | Tested mitigations. | Resource costs. |
-
-| Time Horizon | Aspect | Upsides | Downsides |
-|--------------|--------|---------|-----------|
-| **In 15 Years (Post-Implementation)** | **Security** | AI prediction. | Over-reliance. |
-| | **Resilience** | Instant responses. | Evolving threats. |
-
-**Hard Things to Overcome (Across Horizons)**:
-- Realistic Modeling: Validate attacks.
-- Operator Training: Understand alerts.
-- Coverage: Prioritize threats.
-
-## Implementation Costs and Case Studies
-
-### Costs for Implementation
-- **Software**: Twin attacks - $120k-$250k.
-- **Training**: Experts - $80k.
-- **Annual Ops**: Drills - $60k.
-
-### Real-World Case Studies
-- **UC Irvine Thesis**: Loop spoofing impacts.
-- **FHWA**: Safety mitigations.
-
-### Additional Implementation Details
-- Cross-agency collaboration.
-- Public reporting.
+- **Basic**: focus on data faults and simple spoofing.
+- **Advanced**: include CV spoofing and coordinated multi-intersection attacks.
+- **Automated**: scheduled red-team regression suite.
 
 ## Technical Mechanics
-### Key Parameters
-- Attack impacts, detection times.
 
-### Coordination Types
-- Response playbooks, graded modes.
+### Key Parameters
+- Detection thresholds and dwell times
+- Attack injection profiles
+- Recovery criteria
 
 ### Guardrails
-- Safe responses, audits.
+- Always enforce safe fallbacks.
+- Keep red-team activities isolated from production unless explicitly planned.
+- Log all simulated incidents and outcomes.
 
 ## MVP Deployment
-- Top-10 attacks; monthly drills.
+- Top-10 attack scenarios.
+- Monthly drills in a twin environment.
+- One production corridor in shadow monitoring mode.
 
 ## Evaluation
-- Coverage, detection accuracy, response times.
+- Detection time and false-positive rate.
+- KPI degradation under attack (queues, split failures, safety proxies).
+- Recovery time and operator response adherence.
+
+## References / Standards / Useful Sources
+- NIST AI RMF 1.0 (governance, monitoring, risk management): https://doi.org/10.6028/NIST.AI.100-1
 
 ---
 
-## Key Terms and Explanations
-- **Red-Team**: Adversarial testing.
-- **Spoofing**: False sensor signals.
-- **Mitigations**: Defensive measures.
-- **Vulnerabilities**: Weak points.
-
----
-
-Cross-links: Related ideas include delay-tolerant signals, self-healing intersections.
+Cross-links: Related ideas include delay-tolerant signals, self-healing intersections, and explainable signals.

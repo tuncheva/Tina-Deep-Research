@@ -1,11 +1,12 @@
 # Digital twin + smart signals — research briefs
 
-This folder contains one markdown file per idea, with:
-- a precise description
-- real-world references (systems/papers)
-- an implementation plan (phased)
-- tables comparing upsides/downsides and practical risks
-- citations (URLs)
+This folder contains one markdown file per idea, each written as a compact planning brief with:
+- a **catchy explanation** (1–2 sentences)
+- a **precise definition**
+- practical **benefits/challenges**
+- a phased **implementation plan** and **MVP**
+- **evaluation metrics**
+- **references** (URLs)
 
 ## Index
 

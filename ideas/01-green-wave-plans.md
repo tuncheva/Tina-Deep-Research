@@ -26,56 +26,63 @@ Implementing green waves faces several hurdles:
 - **Scalability**: Hard to coordinate in dense, dynamic urban areas.
 
 ## Implementation Strategies
+
 ### Infrastructure Needs
-- **Traffic detection**: Install inductive loops, radar sensors, video analytics, and probe data collectors to measure flows, speeds, and travel times between intersections.
-- **Signal connectivity**: Deploy central traffic management systems with fiber optic or cellular communication for real-time timing updates.
-- **Timing management**: Implement time-of-day plan libraries or adaptive algorithms like SCOOT/SCATS for dynamic adjustments.
-- **Digital twin**: Develop micro/meso simulation models calibrated to real traffic data for scenario testing.
+- **Traffic detection**: Inductive loops, radar, video analytics, and/or probe data for approach counts, occupancies, speeds, and travel times.
+- **Controller observability**: Phase/interval state, detector status, pedestrian calls; high-resolution logs if available.
+- **Signal connectivity**: Reliable comms (fiber/cellular) to a central system for plan downloads and monitoring.
+- **Timing management**: Plan library support (time-of-day), plus optional adaptive logic.
+- **Digital twin**: Micro/meso model calibrated to travel times, queues, and platoon behavior.
+- **Performance monitoring**: ATSPM-style dashboards to track arrivals on green, split failures, and corridor travel time reliability.
 
 ### Detailed Implementation Plan
-#### Phase 1: Preparation and Assessment (Weeks 1-4)
-- **Stakeholder Engagement**: Form a project team including city engineers, traffic planners, IT specialists, and community representatives. Conduct workshops to define goals (e.g., 15% travel time reduction).
-- **Site Selection**: Choose 1-2 corridors (5-12 intersections) with good existing detection and stable geometry. Assess current timing plans and KPIs.
-- **Budget Allocation**: $100k-$300k for hardware/software; identify funding sources (grants, city budget).
-- **Risk Assessment**: Identify risks like detector failures or comms issues; plan mitigations (backup plans).
-- **Timeline**: 4 weeks; Deliverable: Project charter and baseline KPIs.
+#### Phase 1: Program Setup and Corridor Selection (Weeks 1–6)
+The agency should establish a corridor retiming team that includes traffic engineering, signal maintenance, operations, IT/networking, and a data/analytics contact so decisions do not get blocked later by ownership questions. The team should define corridor-level outcomes (for example, reduced median travel time, improved reliability, reduced stops per vehicle, and improved arrivals-on-green) and should also define explicit constraints for side streets and pedestrians so the project does not succeed by shifting delay to more vulnerable users. The team should then select a pilot corridor with 5–12 signals where geometry is stable, spacing supports progression at the posted speed, and detection and communications can reasonably be made reliable. Finally, the team should produce a baseline report from at least several weeks of data (counts, high-resolution controller logs if available, and probe travel times where available) and should capture known “special conditions” such as school dismissal, freight peaks, and recurring incident locations.
 
-#### Phase 2: Design and Development (Weeks 5-12)
-- **Infrastructure Installation**: Deploy sensors and connectivity; test real-time data feeds.
-- **Twin Calibration**: Collect historical data (6-12 months) to calibrate the simulation model. Validate against actual traffic patterns.
-- **Plan Generation**: Use twin to generate time-of-day plans with offsets and splits. Test for spillback and turning friction.
-- **Integration Testing**: Connect central system to controllers; ensure reliable updates.
-- **Team**: Engineers for hardware, data scientists for modeling.
-- **Budget**: $200k-$500k.
-- **Risks**: Model inaccuracies; mitigate with iterative calibration.
-- **Timeline**: 8 weeks; Deliverable: Calibrated twin and initial plans.
+- **Roles**: traffic engineer (lead), signal maintenance supervisor (field readiness), TMC operations lead (activation/monitoring), IT/network lead (comms/security), data analyst (baseline and KPIs), public information officer (communications if needed).
+- **Deliverables**: project charter, corridor map and movement inventory, baseline KPI report, initial risk register, and an agreed set of operational constraints (pedestrian minimums/clearance and side-street delay caps).
+- **Risks**: the corridor may not be realistically coordinatable due to irregular spacing or heavy turn friction; baseline data may be incomplete; community acceptance may be low if perceived to “speed up traffic.”
+- **Acceptance checks**: the baseline KPIs are reproducible, the corridor is selected with documented constraints, and a conservative fallback plan strategy is agreed before any field changes.
 
-#### Phase 3: Pilot Testing (Weeks 13-20)
-- **Shadow Mode**: Run twin live, comparing predictions to reality without actuating signals.
-- **Operator Training**: Train traffic operators on monitoring dashboards and plan selection.
-- **Guardrail Setup**: Implement max delays, rollback triggers, and safety constraints.
-- **Data Analysis**: Evaluate prediction accuracy and KPI impacts.
-- **Team**: Operators and analysts.
-- **Budget**: $50k for training/software.
-- **Risks**: Over-reliance on twin; use human oversight.
-- **Timeline**: 8 weeks; Deliverable: Pilot report with performance metrics.
+#### Phase 2: Detection, Communications, and Data Readiness (Weeks 7–14)
+The agency should close detection gaps that prevent reliable travel-time and arrivals-on-green measurement by repairing loops, adding radar, validating video zones, and ensuring stop-line presence where actuated operation depends on it. The IT team should harden communications so that plan downloads, time synchronization, and event logging are reliable, and should document minimum uptime targets and escalation paths. The data team should implement a pipeline that stores controller events, detector actuation data, and probe travel times in consistent intersection and movement identifiers so that signal timing and performance analysis can be automated. Before any retiming is attempted, the team should run detector QA (stuck-on/off, chattering, flatline checks) and should fix failures so the system does not calibrate a model on bad data.
 
-#### Phase 4: Full Deployment and Monitoring (Weeks 21-36)
-- **Rollout**: Deploy to selected corridors with phased activation (AM peak first).
-- **Monitoring**: Daily dashboards for KPIs, anomalies, and adjustments.
-- **Adaptive Refinement**: Add weather/incident triggers; continuously retime based on probe data.
-- **Evaluation**: Monthly reports on benefits (e.g., emissions reduction, travel times).
-- **Team**: Maintenance crew, data analysts.
-- **Budget**: $100k annual for ops.
-- **Risks**: Public resistance; communicate benefits.
-- **Timeline**: 16 weeks; Deliverable: Operational system with scaling plan.
+- **Roles**: signal technicians (detection work), IT/network engineer (connectivity and security), data engineer (pipelines and schemas), traffic engineer (movement mapping), operations (monitoring requirements).
+- **Deliverables**: detector QA report, communications readiness report, operational data feeds, intersection/movement registry, and monitoring dashboards for basic health.
+- **Risks**: detector noise can produce misleading travel times; comms dropouts can cause stale state and incorrect KPI computation; retrofits can be delayed by procurement.
+- **Acceptance checks**: key feeds meet a completeness threshold during peak periods (for example >95%), time sync is stable, and dashboards show expected volumes/occupancies without obvious sensor faults.
 
-#### Phase 5: Scaling and Optimization (Ongoing)
-- **Expansion**: Roll out to more corridors, integrating with city-wide systems.
-- **AI Enhancements**: Incorporate machine learning for predictive adjustments.
-- **Sustainability**: Monitor long-term impacts; adjust for EV growth.
-- **Budget**: $500k+ for scaling.
-- **Timeline**: 6-12 months post-deployment.
+#### Phase 3: Build and Calibrate the Corridor Twin (Weeks 15–26)
+The modeling team should build a corridor model that includes lanes, turn bays, signal phasing, pedestrian timings, bus stops, and realistic speed behavior, because progression quality depends heavily on turning friction and side-street discharge. The team should calibrate demands and turning proportions by time-of-day and should estimate operational parameters such as saturation flow and start-up lost time using high-resolution controller logs where possible. The team should validate the model against field measurements by matching not only average travel times but also reliability (p95 travel time), queue patterns, and arrivals-on-green, and should document where the model is known to be less reliable (for example, during unusual pedestrian surges).
+
+- **Roles**: traffic modeler (twin build), data analyst (calibration datasets), traffic engineer (validation criteria), operations representative (operational realism).
+- **Deliverables**: calibrated twin, validation report, parameter registry, and a “known limitations” memo that defines when the twin should not be trusted.
+- **Risks**: overfitting to a short calibration window; poor representation of pedestrian or transit interactions; missing data on turning movements.
+- **Acceptance checks**: the twin meets an agreed validation tolerance on key segments (for example, median and p95 travel times within 10–15% of observations) and reproduces observed queue peaks.
+
+#### Phase 4: Time-of-Day Plan Design and Constraint Review (Weeks 27–34)
+The engineering team should generate a small library of time-of-day plans (AM peak, midday, PM peak, off-peak) using standard coordination practice (cycle length, splits, offsets) while explicitly preserving pedestrian minimums and avoiding progression targets that incentivize speeding. The team should test candidate plans in the twin to ensure that the progression does not create systematic spillback or unacceptable side-street delay and should include recovery behavior for disruptions such as preemption events or unexpected demand surges. Each plan should be packaged as a change-control artifact that includes a before/after KPI estimate, constraints satisfied, and a rollback plan so that operators can revert quickly if the field behaves differently than simulation.
+
+- **Roles**: traffic engineer (plan design), safety/accessibility reviewer (ped timing checks), operations lead (operational constraints), communications contact (if public messaging is needed).
+- **Deliverables**: versioned plan library, constraint compliance report, documented rollback paths, and an operator-facing summary of when to use each plan.
+- **Risks**: side-street starvation; pedestrian service violations; progression that rewards speeding; plan interactions with transit priority.
+- **Acceptance checks**: pedestrian timings are verified, side-street delay caps are met in simulation, and each plan includes a tested rollback procedure.
+
+#### Phase 5: Pilot Deployment (Shadow → Assisted → Active) (Weeks 35–48)
+The agency should first run the new plans in shadow mode by computing expected corridor metrics and comparing them to the existing operation without changing the field, because this step detects data quality problems and model drift early. The operations team should then activate the plans in an assisted manner (for example, enabling AM peak coordination first) while keeping a clear manual override and immediate revert path. During activation, the team should monitor ATSPM measures daily (arrivals on green, split failures, red occupancy, travel time reliability) and should respond to anomalies with targeted adjustments rather than uncontrolled “tuning by feel.” The team should also document incidents and complaints so the final evaluation reflects real operating conditions, not only “good days.”
+
+- **Roles**: operations (activation and monitoring), traffic engineering (on-call retiming), analyst (daily KPI review), maintenance (hot fixes).
+- **Deliverables**: pilot report with before/after KPIs, operator runbook, alarm thresholds, and a decision log of changes made during the pilot.
+- **Risks**: public complaints; unexpected queues due to construction or seasonal changes; over-reliance on the twin.
+- **Acceptance checks**: KPI improvements are observed without violating constraints, operators can revert within minutes, and monitoring alerts are validated.
+
+#### Phase 6: Operations and Continuous Optimization (Weeks 49+ / Ongoing)
+The agency should treat coordination as an ongoing program rather than a one-time retiming, because detector health, construction, seasonal demand, and development can degrade progression quickly. The team should establish a monthly cadence to review detector QA, communications uptime, and KPI drift, and should retime seasonally or when drift triggers indicate that plans are no longer effective. As the program scales to adjacent corridors, the agency should also review equity impacts and ensure that improvement is not concentrated only on major arterials while side streets and pedestrian networks degrade.
+
+- **Roles**: traffic engineering (retiming ownership), operations (daily monitoring), IT (system upkeep), analyst (monthly reporting).
+- **Deliverables**: monthly KPI report, updated plan library versions, maintenance work orders, and an expansion roadmap.
+- **Risks**: calibration drift; equipment aging; shifting demand due to land-use changes.
+- **Acceptance checks**: KPI regressions trigger documented corrective action, plan versioning and audit logs are maintained, and detector/comms health remains within SLA.
 
 ### Choices
 - Pre-timed for predictable demand.
