@@ -1,10 +1,17 @@
-# 17) Safety-First Signals: Optimizing for Near-Misses
+# 17) Safety-First Signals: Optimize Near-Misses, Not Just Delay
 
 ## Catchy Explanation
-Instead of waiting for crashes to prove a problem, safety-first signals treat “near-misses” as warnings—and optimize timing to reduce them.
+Instead of waiting for crashes to prove a problem, safety-first signals treat **near-misses** as warnings—and optimize timing to reduce them.
 
 ## What it is (precise)
-**Safety-first signal control** treats safety as a primary optimization target by using **surrogate safety measures (SSMs)** such as **TTC (time-to-collision)**, **PET (post-encroachment time)**, and conflict counts derived from trajectories (from simulation, video analytics, or connected data). Candidate timing changes are evaluated in a digital twin (or fast predictor) and selected to reduce risk subject to mobility constraints (delay, queues) and policy constraints (pedestrian service). This enables explicit, auditable safety–mobility tradeoffs.
+**Safety-first signal operations** treat safety as a first-class objective/constraint by using **surrogate safety measures (SSMs)** such as **TTC (time-to-collision)** and **PET (post-encroachment time)** and other conflict/avoidance proxies derived from:
+- **simulation trajectories** (digital-twin rollouts),
+- **roadside sensing** (video/radar trajectories where available), and/or
+- **connected/probe telemetry** (e.g., hard braking / speed profiles).
+
+Candidate timing alternatives are evaluated (offline or near-real-time) and only deployed if they satisfy **hard safety + policy constraints** (e.g., pedestrian timing, clearance intervals, safe transitions), while demonstrating improved safety surrogate distributions with acceptable mobility/transit impacts.
+
+This aligns with the Safe System principle that **safety is proactive** and that redundancy is crucial: use multiple layers (timing, geometry, speed management, enforcement, post-crash care) rather than expecting one control knob to eliminate risk. ([`USDOT Safe System Approach` ](https://www.transportation.gov/safe-system-approach))
 
 ## Benefits
 - **Proactive safety**: reduces risk before crashes accumulate.
@@ -13,90 +20,382 @@ Instead of waiting for crashes to prove a problem, safety-first signals treat �
 - **Better justification**: supports safety-driven retiming decisions.
 
 ## Challenges
-- **Validation**: SSMs must be correlated with local crash history.
-- **Data intensity**: needs trajectories or good proxies.
+- **Validation**: SSMs must be locally validated / calibrated to avoid “false confidence.”
+- **Data intensity**: needs trajectories or reliable proxies.
 - **Political sensitivity**: safety improvements may increase delay.
 - **Bias risk**: incomplete detection can undercount vulnerable users.
 
-## Implementation Strategies
+---
 
-### Infrastructure Needs
-- **Trajectory source**: micro-sim twin, video/radar tracking, or CV data.
-- **SSM computation**: TTC/PET/conflict metrics.
-- **Policy constraints**: required ped service, clearance behavior.
-- **Twin evaluation**: test timing alternatives with safety scoring.
-- **Reporting**: safety impact statements + audits.
+## Operating model (safety-first control loop)
 
-### Detailed Implementation Plan
-#### Phase 1: Select Safety Measures, Thresholds, and Decision Rules (Weeks 1–4)
-The agency should begin by selecting a small set of surrogate safety measures that it can compute reliably, because a complex safety score that cannot be defended will not be used for operational decisions. The team should define TTC/PET thresholds and conflict definitions that match local context and should define how safety will be used in decisions, such as treating certain risk levels as hard constraints that prohibit a timing change or using safety as a high-weight objective that is balanced against mobility. The team should define reporting formats and acceptance criteria so that every deployment can be explained as a safety-driven choice rather than an opaque optimization.
-
-- **Roles**: safety program lead (Vision Zero alignment), traffic engineering (timing implications), data/analytics (SSM definitions), accessibility reviewer (vulnerable user focus).
-- **Deliverables**: SSM framework, threshold definitions, decision rules, and reporting template.
-- **Risks**: SSMs may not correlate with local crash patterns; thresholds may be contested.
-- **Acceptance checks**: chosen SSMs are computable with existing data sources and have clear definitions.
-
-#### Phase 2: Data Pipeline, Calibration, and Validation Against Crash History (Weeks 5–12)
-The agency should establish a trajectory data pipeline using either video/radar tracking, connected data, or a calibrated simulation twin, because SSMs require trajectory-like information. The team should validate that trajectory quality is sufficient across lighting and weather conditions and should measure detection bias for pedestrians and cyclists, because undercounting vulnerable users undermines safety claims. The team should compare SSM hotspots to historical crash and near-miss reports to confirm that high-risk SSM locations align with known safety problems, and it should document limitations where the data is incomplete.
-
-- **Roles**: ITS/video analytics team (trajectory extraction), modeler (if twin-based), analyst (validation), safety lead (crash data interpretation), privacy reviewer (data governance).
-- **Deliverables**: calibrated SSM pipeline, validation report, bias assessment, and site prioritization list.
-- **Risks**: video analytics may degrade in bad weather; crash data may be sparse or delayed.
-- **Acceptance checks**: trajectory pipeline is stable, and SSMs show plausible correlation with known risk areas.
-
-#### Phase 3: Generate Safety-Driven Timing Alternatives and Impact Statements (Weeks 13–20)
-The traffic engineering team should generate timing alternatives targeted to the movements and periods where conflicts occur, such as adding LPIs, adjusting protected/permitted left timing, modifying clearance intervals, or changing coordination to reduce speed variance. The team should evaluate candidates using the twin or a fast predictor and should produce safety impact statements that report expected changes in SSM distributions alongside mobility impacts, because safety-first control explicitly trades mobility for risk reduction when needed. The team should choose a small set of plans that meet safety targets and remain operationally feasible.
-
-- **Roles**: traffic engineer (plan design), safety lead (review), analyst/modeler (evaluation), operations (feasibility).
-- **Deliverables**: safety-first plan set, safety impact statements, and a deployment/rollback plan.
-- **Risks**: safety improvements may increase delay and create political pushback; overly aggressive changes can harm transit reliability.
-- **Acceptance checks**: safety targets are met in evaluation and pedestrian service constraints remain satisfied.
-
-#### Phase 4: Pilot Deployment, Monitoring, and Adjustment (Weeks 21–32)
-The agency should deploy changes in assisted mode with close monitoring, because safety-driven changes often require careful field observation and community communication. The team should monitor both SSMs and mobility KPIs, and it should treat unexpected increases in near-miss measures as a trigger for rollback or adjustment. The team should also conduct field observations where possible to validate that behavioral changes (turning yields, vehicle speeds) match the intended safety improvement.
-
-- **Roles**: operations (monitoring), traffic engineering (on-call tuning), safety lead (field review), analyst (reporting), communications (public messaging if needed).
-- **Deliverables**: pilot report, updated thresholds if needed, and documented adjustments.
-- **Risks**: SSM measurements may be noisy; public may perceive added delay as unnecessary.
-- **Acceptance checks**: SSM distributions improve without introducing new operational hazards, and field observations support the data.
-
-#### Phase 5: Continuous Revalidation and Network Expansion (Ongoing)
-The program should revalidate SSM-to-crash correlation periodically and should update thresholds and models as data improves, because safety analytics is an evolving practice. The agency should expand to additional sites using a prioritization process that targets high-risk locations and that accounts for equity and vulnerable road user exposure. The agency should integrate safety-first scoring into policy-driven signal rules so safety constraints remain consistently enforced.
-
-- **Roles**: safety program owner (governance), analytics (revalidation), traffic engineering (expansion), operations (monitoring).
-- **Deliverables**: periodic safety impact reports, updated site list, and expansion roadmap.
-- **Risks**: correlation may drift as infrastructure changes; scaling increases data and maintenance requirements.
-- **Acceptance checks**: safety improvements persist and are reflected in longer-term crash trends where measurable.
-
-### Choices
-- **Hard safety constraints**: do not allow actions above risk thresholds.
-- **Weighted objectives**: trade safety vs mobility explicitly.
-
-## Technical Mechanics
-
-### Key Parameters
-- TTC/PET thresholds
-- Conflict rate targets
-- Data quality thresholds
-
-### Guardrails
-- Preserve pedestrian minimums and clearance behavior.
-- Require evidence for safety claims and periodic audits.
-
-## MVP Deployment
-- One intersection with known conflict history.
-- SSM computed from micro-sim twin.
-- Monthly safety impact report.
-
-## Evaluation
-- Changes in SSM distributions (TTC/PET) and conflict counts.
-- Mobility impacts (delay, queues).
-- Longer-term crash trend validation.
-
-## References / Standards / Useful Sources
-- FHWA Surrogate Safety Measures from Traffic Simulation Models (PDF): https://ntlrepository.blob.core.windows.net/lib/38000/38000/38015/FHWA-RD-03-050.pdf
-- FHWA Leading Pedestrian Interval (LPI) fact sheet: https://highways.dot.gov/sites/fhwa.dot.gov/files/2022-06/04_Leading%20Pedestrian%20Interval_508.pdf
+1) **Detect safety risk regime** (baseline vs rain/night/school dismissal/event egress) using environment + ops signals.
+2) **Generate bounded candidates** (timing templates) that are controller-feasible.
+3) **Score candidates** using **SSM distributions + mobility + multimodal** metrics.
+4) **Apply constraints** (hard rules) and governance approvals.
+5) **Deploy with stability guardrails** (dwell time, hysteresis, rollback triggers).
+6) **Monitor outcomes** continuously (SSMs, mobility, multimodal equity slices) and revalidate periodically.
 
 ---
 
-Cross-links: Related ideas include city rules and explainable signals.
+## 1) How to compute SSMs operationally (data sources + fidelity requirements)
+
+SSMs require **trajectory-like information** at sufficient resolution and with correct signal/geometry context.
+
+### 1.1 SSMs from simulation trajectories (digital twin)
+Microsimulation can provide detailed per-vehicle state over short time steps (position, speed, acceleration, lane) and model actuated signal operations; accurate modeling of signal operations is a requirement if you want to derive surrogate safety measures from simulation outputs. ([`FHWA-RD-03-050 (microsimulation overview)`](https://www.fhwa.dot.gov/publications/research/safety/03050/03.cfm))
+
+Implementation pattern:
+- Run a calibrated microsim (or fast surrogate) with controller logic consistent with field settings.
+- Export per-vehicle trajectories (x/y or lane+distance, speed, acceleration) at small time steps.
+- Compute TTC/PET/conflicts from relative motion and conflict-zone geometry.
+
+Fidelity notes:
+- The FHWA report emphasizes that evaluating surrogate measures relies on **frequent state updates** (sub-second time scales for some proximity measures) and that the simulation must allow that fidelity. ([`FHWA-RD-03-050 (time step fidelity)`](https://www.fhwa.dot.gov/publications/research/safety/03050/03.cfm))
+- Simulation models often assume “safe” driver behavior; surrogate derivation must acknowledge that crashes are not explicitly modeled. ([`FHWA-RD-03-050 (limitations)`](https://www.fhwa.dot.gov/publications/research/safety/03050/03.cfm))
+
+### 1.2 SSMs from roadside sensing (video / radar / lidar)
+Roadside sensing can produce trajectories or conflict proxies without running a twin.
+
+Operational options:
+- **Trajectory extraction**: multi-object tracking → per-object trajectory → conflict metrics.
+- **Proxy scoring** when full trajectories aren’t robust:
+  - hard-braking events in approach lanes,
+  - red-entry detections (stop bar crossings during red),
+  - turning yield compliance proxies.
+
+Limitations (must be documented):
+- Occlusion, glare, precipitation, and nighttime conditions can degrade tracking.
+- Vulnerable road users (VRUs) are disproportionately affected by detection failures → equity risk.
+
+### 1.3 SSMs from connected/probe telemetry (hard braking, speed profiles)
+Probe/CV telemetry can support surrogate safety programs even where roadside sensing is limited.
+
+Operational proxies:
+- Hard braking and high deceleration events near intersections.
+- Speed distributions (e.g., percent of vehicles exceeding context speed in approach).
+
+Privacy guardrails:
+- Use aggregation (space/time bins) and avoid raw trajectories where possible.
+- Maintain data minimization and access controls (who can see what, for what purpose).
+
+### 1.4 Minimum viable fidelity requirements (practical)
+Regardless of source, you need:
+- **Time synchronization**: sensors and controller clocks must be aligned (or corrected) so that conflict time ordering is meaningful.
+- **Movement classification**: each trajectory/proxy must be mapped to movement (through/left/right, ped crossing leg).
+- **Conflict-zone geometry**: consistent definitions of where paths overlap.
+- **Sampling rate / update period**: sufficient to resolve near-miss dynamics (higher for TTC-like measures).
+
+From microsimulation specifically, the FHWA review highlights that many surrogate measures require detailed vehicle-vehicle interaction information that is not always exposed to end users; APIs/output configurability matter materially for implementability. ([`FHWA-RD-03-050 (data extraction)`](https://www.fhwa.dot.gov/publications/research/safety/03050/03.cfm))
+
+### 1.5 Table: SSM → definition → source options → required fidelity → failure modes
+
+| SSM / proxy | Operational definition (short) | Data source options | Required fidelity (minimum viable) | Known failure modes |
+|---|---|---|---|---|
+| TTC (time-to-collision) | time until collision if current relative motion continues | micro-sim trajectories; roadside trajectories | high-frequency state updates; accurate x/y (or lane+distance) and speed/accel | unstable with noisy tracking; sensitive to time step; mis-specified conflict zones |
+| PET (post-encroachment time) | time between one user leaving conflict area and another entering | roadside trajectories; micro-sim | correct conflict-zone geometry; accurate timestamps | poor geometry mapping; missed detections for VRUs |
+| Conflict count (by type) | count of interactions below TTC/PET thresholds by conflict type | micro-sim; roadside | consistent thresholding + classification rules | threshold drift; site-to-site comparability issues |
+| Hard braking events | count/rate of deceleration events above threshold near stop bar | probe/CV; roadside trajectories | consistent decel definition; location accuracy to attribute to intersection | device bias; weather effects; fleet composition bias |
+| Red-entry / RLR proxy | stop-bar crossing during red interval | controller state + detection/video | accurate phase state timestamps + stop bar detection | stop-bar detector failures; time-sync errors |
+| Speed distribution in approaches | percentiles of approach speed by time-of-day | probe/CV; roadside | stable geofencing; enough samples per bucket | sample bias; work zones/event bias |
+
+---
+
+## 2) Local validation: SSM ↔ crash correlation and transferability program
+
+SSMs are useful only if you can defend that they track meaningful safety outcomes in your context.
+
+The NCHRP guidance on using surrogate/alternative measures stresses that establishing quantitative linkages between surrogates and crashes has been challenging, and that practitioners still use surrogates even without established quantitative linkages—so interpretation and study design matter. ([`NCHRP Web-Only Document 369 (surrogate measures background)`](https://www.tesc.psu.edu/assets/docs/Estimating-Effectiveness-of-Safety-Treatments-in-the-Absence-of-Crash-Data.pdf))
+
+### 2.1 Validation goals
+- **Correlation**: do high-SSM-risk locations/time periods align with crash hot spots and conflict complaints?
+- **Sensitivity**: do SSM distributions move in expected direction after known safety treatments?
+- **Transferability**: can one set of thresholds/weights work across similar intersection archetypes?
+
+### 2.2 Program design (implementable)
+
+**A) Segment the city into archetypes**
+- Intersection form: 4-leg vs skewed, channelized rights, protected-only vs protected/permitted lefts.
+- Mode context: near schools, high ped volumes, bike facilities, transit priority corridors.
+- Time regimes: peak vs off-peak; night vs day; rain/snow vs dry.
+
+**B) Build a validation dataset**
+- Crash history (with severity) + near-miss complaints.
+- SSM time series (TTC/PET/conflicts, hard braking, RLR proxies) by intersection/time bucket.
+- Exposure measures (volumes by mode, turning volumes, pedestrian crossings).
+
+**C) Study design outline**
+- Baseline window: 6–24 months (as available) of SSM + crash/complaint history.
+- Intervention window: matched duration post-change.
+- Controls:
+  - control intersections with similar context but no treatment,
+  - time-of-day and seasonal controls.
+- Regression-to-the-mean handling (practical):
+  - avoid selecting only the worst recent crash spikes; include multi-year context,
+  - use controls and time-series comparisons rather than only before/after at treated sites.
+
+**D) Acceptance criteria for adopting SSMs as decision targets**
+Minimum thresholds your program should meet before using SSMs to drive automated or high-frequency decisions:
+- Repeatable hotspot alignment: top-N SSM risk sites overlap meaningfully with known safety concern sites.
+- Measurement stability: SSM estimates are stable under normal sensor health conditions.
+- Bias assessment: documented VRU detection bias and mitigation plan.
+
+### 2.3 Revalidation cadence and ownership
+- **Monthly (ops):** sensor health + sanity checks; review outlier days.
+- **Quarterly (signals + safety):** site archetype scorecards; adjust thresholds cautiously.
+- **Annually (Vision Zero lead):** formal revalidation report; decide whether SSM targets/constraints change.
+
+---
+
+## 3) Equity and multimodal safety operationalization (beyond vehicle conflicts)
+
+Safety-first signals must cover **pedestrians, bicyclists, transit riders**, not only vehicle-vehicle conflicts.
+
+### 3.1 Multimodal SSMs and exposure metrics
+Examples (pick a small defensible set):
+- **Ped turning-conflict proxies**: low PET between turning vehicles and pedestrians in crosswalk.
+- **Yield compliance proxies**: percent of turns yielding when ped present (requires detection).
+- **Speed-at-crossing**: approach speed distribution during ped phases.
+- **Exposure-weighted risk**: (crossing volume × turning volume × speed proxy) to avoid “low counts = safe.”
+
+LPI as a deployable timing safety lever:
+- FHWA describes LPI as giving pedestrians a **3–7 second** head start before vehicles receive a green, improving visibility and reducing conflicts. ([`FHWA Leading Pedestrian Interval (PSC)`](https://highways.dot.gov/safety/proven-safety-countermeasures/leading-pedestrian-interval))
+
+### 3.2 Equity framing
+Use Safe System principles (shared responsibility, proactive safety, humans are vulnerable) to justify explicit prioritization of severe injury risk reduction over minor delay improvements. ([`USDOT Safe System Approach` ](https://www.transportation.gov/safe-system-approach))
+
+Operationalize equity:
+- Report SSM deltas by:
+  - neighborhood equity bucket,
+  - user type (ped, bike, vehicle),
+  - time-of-day (including nighttime).
+- Require that safety gains are not concentrated only in already well-served corridors.
+
+### 3.3 Reporting template (before/after by geography, mode, severity proxy)
+
+**Safety Equity Report (per quarter / per program release):**
+- Version + dates + corridors covered
+- For each neighborhood bucket:
+  - exposure (peds/day, bikes/day, vehicles/day)
+  - top 5 intersections by severe-risk proxy
+  - before/after deltas:
+    - TTC/PET severe tail metrics (e.g., share below threshold)
+    - turning–ped conflict proxies
+    - hard braking rate
+    - red-entry proxy rate
+  - narrative: “what changed and why”
+- VRU detection completeness stats (missingness by hour/weather)
+
+---
+
+## 4) Real-time “adaptive safety constraints” (triggers, dependencies, guardrails)
+
+Safety-first signals are most useful when they can switch into **pre-approved safety modes** when conditions increase risk.
+
+### 4.1 Triggers (examples)
+- **Weather/visibility:** rain/snow, low visibility, nighttime.
+- **School dismissal windows:** scheduled and geofenced.
+- **Event egress:** stadium/concert egress; pedestrian surges.
+- **Incident/crash indicators:** sudden speed drops, blocked lanes, emergency response presence.
+
+### 4.2 Guardrails against “false safe” behavior
+If the data is missing or unhealthy, do not pretend safety improved.
+
+Guardrails:
+- If ped detection fails (or ped tracking missingness exceeds threshold) → switch to conservative mode and treat VRU risk as **high uncertainty**.
+- If comms loss / time sync loss → freeze to last known safe plan; require operator confirmation before re-entering adaptive mode.
+- If conflict metric spikes unexpectedly after a timing change → rollback.
+
+### 4.3 Example safety mode templates (deployable)
+
+| Mode | When used | Timing actions (bounded templates) | Key constraints | Exit rules |
+|---|---|---|---|---|
+| RAIN_SAFE | rain / low visibility | enable protected-only lefts where feasible; reduce progression speed; extend clearance conservatively | keep ped walk+clearance; don’t exceed max cycle | dwell ≥ N minutes; exit after rain clears for M minutes |
+| SCHOOL_PEAK | dismissal windows | enable LPI (3–7s) on legs with heavy ped; restrict permissive turns | ensure accessible ped timing and max wait policy | exit at scheduled end + cooldown ([`FHWA Leading Pedestrian Interval (PSC)`](https://highways.dot.gov/safety/proven-safety-countermeasures/leading-pedestrian-interval)) |
+| NIGHT_CALM | nighttime | reduce green that encourages high approach speeds; favor smoother progression | keep minimum service for side streets | exit at TOD boundary + dwell |
+| EVENT_EGRESS | event release | dedicate longer ped service; restrict turn conflicts | never violate ped clearance | exit when ped surge drops below threshold |
+
+### 4.4 Avoiding overreaction / oscillation
+Use the same stability tools as other adaptive systems:
+- Trigger **persistence** (require condition for N consecutive windows).
+- **Hysteresis** (separate enter/exit thresholds).
+- **Minimum dwell time** (stay in a safety mode long enough to matter).
+
+---
+
+## 5) Tradeoff accounting + decision ownership (safety vs mobility vs transit)
+
+### 5.1 Hard constraints vs soft objectives
+**Hard constraints (must never be violated):**
+- Ped walk + clearance intervals and accessible pedestrian signal requirements.
+- Safe plan transitions (no unsafe ring/phase transitions).
+- Explicit max ped wait caps (agency policy).
+
+**Soft objectives (trade explicitly):**
+- Vehicle delay, stops, travel time reliability.
+- Transit reliability (headways, OTP).
+- Progression quality.
+
+### 5.2 Multi-objective accounting (how to make it operational)
+Create a scorecard per candidate:
+- Safety: severe tail of TTC/PET, conflict count severity bins, hard braking rate, red-entry proxy.
+- Mobility: person-delay (not just vehicle delay), max queue, spillback risk.
+- Transit: bus delay/headway disruption.
+
+Use a “do-nothing baseline” candidate and only accept a change if safety improves meaningfully or if required by a safety mode.
+
+### 5.3 Governance (who sets tradeoff policy)
+Safe System emphasizes shared responsibility and proactive safety; translate that into named owners for policy. ([`USDOT Safe System Approach` ](https://www.transportation.gov/safe-system-approach))
+
+Recommended governance roles:
+- **Vision Zero / safety program lead:** sets severity priorities and acceptable risk thresholds.
+- **Signals engineer:** defines feasible timing templates and controller constraints.
+- **Transit agency:** defines transit reliability constraints.
+- **Emergency services:** defines emergency response constraints.
+- **Data/privacy lead:** approves data use and retention.
+
+### 5.4 Safety Impact Statement template (required for any deployment)
+
+Use this for each deployed timing package (pilot or network release):
+
+```text
+Safety Impact Statement
+
+1) Change summary
+- Corridor / intersections:
+- Timing actions (templates):
+- Dates / times active:
+- Trigger mode (if adaptive):
+
+2) Expected safety effect (surrogates)
+- Primary SSM targets (e.g., TTC tail, PET tail):
+- Expected direction + magnitude (from evaluation):
+- Data sources used (sim/video/probe) + known limitations:
+
+3) Expected mobility + multimodal impacts
+- Person-delay delta:
+- Transit reliability delta:
+- Ped delay / max wait:
+
+4) Equity / distributional impacts
+- Neighborhood buckets impacted:
+- VRU exposure changes:
+
+5) Approvals
+- Safety lead:
+- Signals engineer:
+- Transit:
+- Emergency services (if applicable):
+- Date:
+
+6) Rollback triggers
+- SSM spike thresholds:
+- Detector health / missingness thresholds:
+- Public complaint / field observation triggers:
+
+7) Monitoring plan
+- Metrics + cadence:
+- Owner:
+```
+
+---
+
+## 6) Boundaries of signal timing: enforcement, geometry, and complementary actions
+
+Timing is powerful but limited:
+- Timing can reduce conflicts by changing phase ordering, providing head starts (e.g., LPI), reducing permissive conflicts, and smoothing speed profiles.
+- Timing cannot fix unsafe geometry (poor sight distance, high-speed channelized turns) by itself, and it cannot guarantee compliance.
+
+Safe System explicitly frames safety as requiring **redundancy** and multiple layers of protection—not a single operational tactic. ([`USDOT Safe System Approach` ](https://www.transportation.gov/safe-system-approach))
+
+### 6.1 Complementary measures (coordinate with safety/geometry programs)
+- **Geometry:** daylighting, tighter radii, protected intersections, leading turn restrictions.
+- **Speed management:** speed limit setting, traffic calming, progression speed tuning.
+- **Signage/markings:** improved crosswalk markings, turn restriction signs.
+- **Enforcement coordination:** targeted enforcement during known risk windows.
+- **Education/outreach:** especially near schools and event venues.
+
+### 6.2 What data to share across programs
+- High-risk movement/time windows (SSM hotspot slices).
+- Exposure metrics (VRUs and turning volumes).
+- Before/after safety surrogate deltas after geometry/enforcement changes.
+
+---
+
+## Implementation Checklist
+- [ ] Pick 3–6 SSMs/proxies you can compute reliably (include at least one VRU-focused measure).
+- [ ] Decide data source strategy (sim trajectories vs roadside sensing vs probe/CV) and document limitations.
+- [ ] Build movement mapping and conflict-zone geometry for every intersection in scope.
+- [ ] Implement SSM computation with data-quality gates and reproducible configs.
+- [ ] Define safety modes + bounded timing templates (e.g., LPI, protected-only lefts) with clear triggers.
+- [ ] Implement stability guardrails (persistence, hysteresis, dwell, cooldown).
+- [ ] Establish local validation program (archetypes, controls, acceptance criteria).
+- [ ] Establish equity reporting slices (neighborhood, user type, time-of-day).
+- [ ] Define governance owners and approval workflow; require Safety Impact Statements.
+- [ ] Pilot at 1–3 sites; monitor; expand with periodic revalidation.
+
+---
+
+## Safety Evaluation & Monitoring Runbook
+
+### A) Daily / weekly ops checks
+1. Verify sensor health and time synchronization; if missingness high → disable adaptive safety mode and run conservative plan.
+2. Review red-entry / RLR proxy time series (if available) and hard braking hotspots.
+3. Review top intersections by severe SSM tail (e.g., TTC/PET tail).
+
+### B) Per-deployment monitoring (first 2–4 weeks)
+1. Compare before vs after:
+   - TTC/PET tail share below threshold
+   - turning–ped conflict proxy rate
+   - hard braking rate
+   - red-entry proxy rate
+2. Verify multimodal constraints:
+   - ped delay / max wait policy
+   - transit reliability impacts
+3. Check stability:
+   - mode flip-flops (enter/exit too often)
+
+### C) Rollback procedure
+1. Triggered by:
+   - SSM spike beyond threshold
+   - ped detection failure or severe missingness
+   - field observation of unsafe behavior
+2. Actions:
+   - revert to last known safe timing package
+   - freeze in conservative mode until review
+   - file incident summary and open investigation ticket
+
+### D) Quarterly safety review
+- Produce Safety Equity Report (section 3.3).
+- Re-evaluate thresholds for archetypes.
+- Decide whether to expand, pause, or redesign templates.
+
+---
+
+## Governance / Safety Impact Statement Template
+Use the template in section 5.4 for every deployed timing package (pilot or production).
+
+---
+
+## Reference Links
+- [`FHWA-RD-03-050 Surrogate Safety Measures From Traffic Simulation Models (chapter page)`](https://www.fhwa.dot.gov/publications/research/safety/03050/03.cfm)
+- [`FHWA-RD-03-050 PDF` ](https://ntlrepository.blob.core.windows.net/lib/38000/38000/38015/FHWA-RD-03-050.pdf)
+- [`FHWA Leading Pedestrian Interval (Proven Safety Countermeasure)`](https://highways.dot.gov/safety/proven-safety-countermeasures/leading-pedestrian-interval)
+- [`USDOT Safe System Approach` ](https://www.transportation.gov/safe-system-approach)
+- [`FHWA Automated Traffic Signal Performance Measures overview` ](https://ops.fhwa.dot.gov/arterial_mgmt/performance_measures.htm)
+- [`NCHRP Web-Only Document 369: Estimating Effectiveness of Safety Treatments in the Absence of Crash Data (PDF)`](https://www.tesc.psu.edu/assets/docs/Estimating-Effectiveness-of-Safety-Treatments-in-the-Absence-of-Crash-Data.pdf)
+
+---
+
+## Completion Checklist
+- ✅ **(1) How to compute SSMs operationally (data sources + fidelity requirements)**: see **“1) How to compute SSMs operationally”** incl. table in **1.5**.
+- ✅ **(2) Local validation: SSM ↔ crash correlation + transferability program**: see **“2) Local validation…”**.
+- ✅ **(3) Equity + multimodal safety operationalization + reporting template**: see **“3) Equity and multimodal…”** incl. **3.3**.
+- ✅ **(4) Real-time adaptive safety constraints (triggers, guardrails, templates, anti-oscillation)**: see **“4) Real-time ‘adaptive safety constraints’”**.
+- ✅ **(5) Tradeoff accounting + decision ownership + Safety Impact Statement template**: see **“5) Tradeoff accounting…”** incl. **5.4**.
+- ✅ **(6) Boundaries of signal timing + complementary actions + coordination**: see **“6) Boundaries of signal timing…”**.
+- ✅ Added final sections: **Implementation Checklist**, **Safety Evaluation & Monitoring Runbook**, **Governance / Safety Impact Statement Template**, **Reference Links**, **Completion Checklist**.
+
+---
+
+Cross-links: Related ideas include city rules built into signals, explainable signals, event-aware timing, and fast-forward twin.

@@ -106,273 +106,221 @@ Authoritative context: FHWA describes ATSPMs as a way to leverage *high-resoluti
 
 ---
 
-### 1) Parameter catalog (deployable)
+### 1) Safety validation (shadow→prod gates + measurable proxies)
 
-> Note: “Typical ranges” vary by jurisdiction and geometry; include them only where you can cite an authoritative source. This doc therefore provides **definitions + methods + failure modes**, and uses citations for the data/log concepts.
+Safety evaluation is a core requirement because calibration can inadvertently “ratchet” the system toward outcomes that look efficient but increase risk.
 
-| Parameter | Definition (operational) | Data required | Estimation method (high-level) | Update cadence | Failure modes / pitfalls |
-|---|---|---|---|---|---|
-| Start-up lost time | Time lost at start of green due to driver reaction/acceleration before reaching steady discharge | Stop-bar detector actuation (or video) + phase change times; queued discharge events | For each saturated green, estimate “effective green” vs actual; or measure first several headways and compare to saturation headway; robust median across days | Quarterly or after major geometry/plan changes | Detector timestamp drift; queue not fully formed; first vehicle not at stop line; permissive left gaps contaminate;
-| Saturation headway / saturation flow | Steady-state headway (s/veh) / discharge rate under continuous queue | Stop-bar presence/actuation per vehicle (or video trajectories) + phase start/end | Extract headways after the queue reaches steady state (e.g., vehicles 4+), compute trimmed mean/median; convert to sat flow | Monthly/seasonal; freeze after plan deploy | Spillback interrupts discharge; mis-mapped detectors; mixed lane groups; short greens provide too few steady vehicles |
-| Heavy-vehicle adjustment / PCE | Adjustment for trucks/buses on discharge/headway | Vehicle classification (video, WIM, CV class) or proxy route class; headways by class | Stratify headways by class; estimate multiplicative factor vs passenger-car-only; publish confidence bands | Semiannual; corridor freight changes | Misclassification; low truck samples; bus stop near stop line biases |
-| Turn-movement discharge modifiers (esp. permissive left) | Reduced discharge for permissive movements due to gap acceptance/conflicts | Phase timing + detection for subject movement + opposing occupancy/arrival pattern; optional video conflict classification | Separate protected vs permissive intervals; for permissive, model as gap-acceptance regime: estimate service rate conditional on opposing flow | Plan-dependent; reevaluate when phasing changes | Treating permissive like protected; opposing detector faults; pedestrian recall changes the conflict state |
-| Platoon dispersion / arrival-type parameter (if used) | How arrivals spread between upstream and downstream signals (coordination realism) | Probe travel times (Bluetooth/CV) or upstream detection arrivals + downstream arrivals | Fit dispersion/arrival profile that matches observed arrival-on-green or arrival distributions; validate with ATSPM measures | Seasonal; after major offset changes | Probe sample bias; incidents; offset transitions; downstream bottleneck dominates |
-| Near-capacity / spillback regime discharge | Discharge/served flow when downstream blocking or oversaturation interrupts flow | Detector occupancy patterns, queue spillback indicators, downstream link status (if available), split-failure proxies | Identify regimes (normal vs blocked) using occupancy/green utilization; estimate separate discharge rates; use as twin regime model | Triggered recalibration after geometry/network change | Misclassifying blockage as “slow drivers”; missing downstream sensing; construction/special events |
-
-ATSPM concept grounding: ATSPMs are built around a **high-resolution controller log** (events + timestamps) and can work with existing infrastructure; detection enables additional measures ([`fhwahop20002.pdf`](https://ops.fhwa.dot.gov/publications/fhwahop20002/fhwahop20002.pdf)).
-
----
-
-### 2) Data Quality & Missingness Budget (vendor-neutral)
-
-FHWA emphasizes that ATSPMs rely on controller event data with timestamps (high-resolution logs) and optional detection for richer measures ([`fhwahop20002.pdf`](https://ops.fhwa.dot.gov/publications/fhwahop20002/fhwahop20002.pdf)). That makes **data quality gates** a first-class safety feature.
-
-#### 2.1 Common failure modes (what breaks calibration)
-- **Stop-bar detector issues**: misplacement (not at stop bar), stuck-on/stuck-off, chattering, sensitivity drift.
-- **Video detection issues**: occlusion (queues, trucks), nighttime glare, rain/snow, lens contamination, calibration drift.
-- **Classification errors**: heavy vehicles mislabeled (especially buses vs trucks), turning movements confused, pedestrian/bike miss-detections.
-- **Clock/timestamp drift**: cabinet clock drift, server ingest delays, time-zone/DST mistakes.
-- **Phase/movement mapping errors**: channel reassignment after maintenance, incorrect lane group mapping in the database.
-
-#### 2.2 Minimum viable data requirements (per estimate)
-Use these as *floor* requirements; stricter is better.
-
-| Estimate | Minimum viable inputs | Minimum sample concept | Notes |
-|---|---|---|---|
-| Start-up lost time | Accurate phase start time + per-vehicle departure times at stop line | Many saturated cycles across multiple days | Avoid “near-saturated” greens; require queued first vehicle |
-| Saturation headway/flow | Per-vehicle headways during sustained queue discharge | Enough steady-state vehicles per movement/time bin | Require evidence of continuous queue (e.g., occupancy/queue present at green start) |
-| Heavy-vehicle factor | Vehicle class + headway/time at stop line | Enough truck/bus observations per bin | Consider pooling across similar sites/corridors |
-| Permissive left modifier | Protected vs permissive interval identification + opposing flow | Enough permissive service opportunities | Separate by opposing volume regimes |
-| Dispersion/arrival type | Upstream release + downstream arrival distribution | Enough matched platoons | Use probes when detection lacks upstream match |
-
-#### 2.3 Quantitative gates (missingness + samples + outliers)
-Set agency-specific numeric thresholds, but enforce the *structure* below:
-
-- **Missingness gate** (per detector stream per day):
-  - compute % minutes with invalid state (missing/no data), % minutes stuck-on, % minutes stuck-off.
-  - if any exceed threshold → **freeze updates** for all dependent parameters.
-- **Sample size gate** (per parameter per bin):
-  - require minimum number of saturated cycles **and** minimum number of steady-state headways.
-  - if insufficient → increase pooling (wider time window / similar sites) or fall back to defaults.
-- **Outlier gate**:
-  - reject headways outside physically plausible bounds (agency-defined) and reject cycles with obvious clock jumps.
-  - prefer robust statistics (median/trimmed mean) over mean.
-
-#### 2.4 Confidence representation + fallback strategy
-Every published parameter should ship with:
-- `estimate`, `confidence_score` (0–1), `sample_size`, `lookback_window`, `data_health_status`, and `last_good_version`.
-
-Fallback rules:
-- If `data_health_status != OK` → **do not update**; use last-good.
-- If confidence is low but stable → allow **bounded drift** only.
-- If confidence is low and unstable → revert to baseline defaults and flag for field review.
-
----
-
-### 3) Distinguish behavior vs geometry/control (avoid misattribution)
-
-#### 3.1 Required site metadata schema (minimum)
-To avoid “learning driving style” when the real cause is geometry/control, require a metadata record per intersection and per movement:
-
-- Intersection ID, movement ID/lane group ID, phase(s)
-- # lanes serving lane group; lane widths (if available)
-- Grade (approach), curvature/sight distance proxies (if available)
-- Turn bay length/storage; channelization/islands
-- Curbside friction indicators: parking/loading, bus stop near stop line, driveway density
-- Posted speed limit and (if policy exists) **target speed**
-- School zone / high-pedestrian area flags
-- Transit priority/preemption presence
-- Downstream bottleneck flags and distance to downstream stop line
-- Detector type + placement notes (stop-bar vs advanced) + last maintenance date
-
-#### 3.2 Stratification patterns (recommended)
-Stratify estimates so you don’t mix regimes:
-- **By movement** (through vs left vs right; protected vs permissive)
-- **By plan/time-of-day** (AM peak, midday, PM peak; weekend)
-- **By weather/visibility** (if available)
-- **By incident/event flags** (construction, special events)
-- **By blockage regime** (normal discharge vs spillback)
-
-#### 3.3 Detect “this isn’t driving style” (exclusion/regime split)
-Use indicators that suggest interruption/oversaturation:
-- high stop-bar occupancy *during green* without corresponding discharge,
-- repeated split failures (queue not served within green),
-- downstream occupancy indicates blocking,
-- abrupt drop in discharge rate aligned with downstream signal cycles.
-
-Operational rule:
-- **Exclude** interrupted cycles from “normal saturation flow” estimation.
-- **Model separately** a “blocked/near-capacity” regime parameter used only when spillback indicators are active.
-
-ATSPM alignment: split failure and related measures are commonly derived from high-resolution controller + detection data as part of performance monitoring programs ([`fhwahop20002.pdf`](https://ops.fhwa.dot.gov/publications/fhwahop20002/fhwahop20002.pdf)).
-
----
-
-### 4) Safety validation: prevent encoding unsafe norms
-
-Safety context: FHWA’s Safe System speed management guidance emphasizes prioritizing safety (injury minimization) and ongoing monitoring/evaluation rather than optimizing only motor-vehicle throughput ([`Safe_System_Approach_for_Speed_Management.pdf`](https://highways.dot.gov/sites/fhwa.dot.gov/files/Safe_System_Approach_for_Speed_Management.pdf)).
-
-#### 4.1 Safety outcomes/proxies to monitor when parameters change
+#### 1.1 Safety outcomes/proxies to monitor when parameters change
 Monitor both **direct outcomes** (if available) and **proxied risk**:
 
 - **Speed distributions / speeding proxies**
   - probe speeds (segment/approach), radar spot speeds where available.
   - metrics: mean, 85th percentile, % above posted or target speed.
-  - rationale: operating speed and speed distributions are central to speed management practice (definitions and use discussed by FHWA) ([`Safe_System_Approach_for_Speed_Management.pdf`](https://highways.dot.gov/sites/fhwa.dot.gov/files/Safe_System_Approach_for_Speed_Management.pdf)).
 - **Harsh braking / hard acceleration proxies** (if probe/CV data supports)
   - metrics: events per 1,000 vehicles, by approach and time-of-day.
   - limitation: biased toward equipped vehicles; validate against spot observations.
 - **Red-light running (RLR) proxies**
-  - from detection/video: red entry events, “red-light actuation” style indicators if present in local ATSPM stack.
+  - from detection/video: red entry events / red occupancy when available.
   - limitation: detection coverage and legal definitions vary.
-- **Pedestrian/bike conflict proxies** (if video analytics used)
-  - metrics: post-encroachment time (PET), time-to-collision (TTC) distributions.
-  - limitation: video conflict measures are *surrogates*; do not equate to crashes.
+- **Conflict proxies (if video analytics used)**
+  - metrics: PET/TTC distributions.
+  - limitation: surrogates; do not equate to crashes.
 
-#### 4.2 Non-negotiables expressed as measurable gates
-Calibration must not change controller/timing rules that protect safety:
+#### 1.2 “Non-negotiables” expressed as measurable gates
+Calibration must not justify relaxing minimum safety constraints.
 
-- **Clearance interval integrity**
-  - yellow + all-red must meet agency policy/standards; do not shorten below required.
-  - gate: any change proposal that reduces clearance below configured minimum → **reject**.
+- **Start-up lost time is not a performance target**
+  - If observed start-up lost time decreases, treat it as an *observation* not an objective.
+  - Gate: never modify timing in a way that requires unsafe acceleration to “hit” an assumed saturation headway.
+
+- **Clearance integrity**
+  - Gate: any proposal that reduces yellow/all-red below configured minimums → **reject**.
+
 - **Pedestrian minimums**
-  - walk + flashing don’t-walk and ADA features must remain compliant.
-  - gate: predicted or measured reduction below minimum walk/clearance → **reject**.
+  - Gate: any predicted/measured pedestrian timing reduction below policy/standard → **reject**.
+
 - **No illegal phase sequences**
-  - maintain valid ring-barrier structure and intergreens.
-  - gate: any simulated/field plan that produces conflicting greens → **reject**.
-- **Max pedestrian wait (if policy exists)**
-  - gate: do not exceed policy maximum (or publish exception justification).
+  - Gate: any plan that produces conflicting greens → **reject**.
 
-#### 4.3 Shadow → production go/no-go protocol
-Use a staged deployment so “learning” cannot silently degrade safety.
+#### 1.3 Shadow → limited production → broad production protocol
+Use staged deployment so updates cannot silently degrade safety.
 
-**Stage A — Shadow calibration (no field changes)**
-- Run new parameters in the twin only.
-- Compare predicted discharge/queues to observed for a holdout period.
+- **Stage A — Shadow calibration (no field changes)**
+  - Run new parameters in the twin only.
+  - Validate predicted discharge/queues against observed data.
 
-**Stage B — Limited production (pilot windows)**
-- Apply small, reversible timing changes at limited sites.
-- Enforce a cooldown window after deployments (already noted above).
+- **Stage B — Limited production (pilot windows)**
+  - Apply small, reversible timing changes at limited sites.
+  - Enforce cooldown/freeze windows after changes.
 
-**Stage C — Broad production**
-- Expand to corridors once safety + equity gates pass.
-
-**Pre/post windows**
-- Minimum: compare matched weeks (e.g., 2–4 weeks before vs 2–4 weeks after), excluding abnormal days.
-
-**Acceptance criteria (examples; agency must set numeric targets)**
-- No statistically meaningful increase in:
-  - 85th percentile approach speeds beyond policy target,
-  - RLR proxy events,
-  - harsh braking events,
-  - pedestrian wait time in priority areas.
+- **Stage C — Broad production**
+  - Expand to corridors once safety + equity gates pass.
 
 **Rollback triggers**
 - Any gate violation above.
+- Increase in RLR/conflict proxies beyond tolerance.
+- Speed distribution worsening beyond policy target.
 - Data quality failure (freeze).
-- Operator reports of near-misses, unusual queues, or complaint spikes.
-
-#### 4.4 Safety regression tests in the twin
-Treat parameter updates like software releases:
-- **Speed policy test**: model must not increase predicted approach speeds beyond target-speed policy (where policy exists) ([`Safe_System_Approach_for_Speed_Management.pdf`](https://highways.dot.gov/sites/fhwa.dot.gov/files/Safe_System_Approach_for_Speed_Management.pdf)).
-- **RLR risk test**: red occupancy / red-entry proxy counts must not increase beyond tolerance.
-- **Clearance test**: verify all clearance intervals and pedestrian timings remain unchanged (unless explicitly reviewed).
-- **Blocking test**: ensure changes do not increase frequency of spillback regime activation.
 
 ---
 
-### 5) Representativeness + equity impacts (operational)
+### 2) Representativeness + equity (bias risks, guardrails, sign-off)
 
-Equity context: FHWA’s Safe System speed management guidance explicitly ties safe road users and equity considerations to speed management decisions and recognizes unequal burdens across communities ([`Safe_System_Approach_for_Speed_Management.pdf`](https://highways.dot.gov/sites/fhwa.dot.gov/files/Safe_System_Approach_for_Speed_Management.pdf)).
+Calibration is not neutral: where you calibrate, when you calibrate, and what you weight changes who benefits.
 
-#### 5.1 Why “local driving style” can embed inequity
-“Local driving style” is shaped by:
-- street design and land use context,
-- enforcement patterns and compliance culture,
-- freight routing and transit operations,
-- who is exposed to danger and delay (especially VRUs).
+#### 2.1 How calibration can bias outcomes
+Common bias channels:
+- **Time-of-day bias**: peak-only data sets lock in peak behavior for off-peak conditions.
+- **Instrumentation bias**: better detection coverage in certain neighborhoods yields better-tuned performance there.
+- **User-mix bias**: freight-heavy corridors dominate parameter estimation if not stratified.
+- **Outcome bias**: optimizing for vehicle delay alone pushes delay onto pedestrians/buses/side streets.
 
-If you calibrate purely to maximize vehicle throughput, you can unintentionally:
-- privilege dominant movements (often mainline vehicles),
-- worsen pedestrian wait in equity focus areas,
-- normalize speeding/aggressive discharge as “efficient”.
-
-#### 5.2 Concrete equity guardrails
-- **Calibrate for realism; optimize only within city-rule constraints**
-  - parameters describe reality; optimization must respect policy (speed targets, ped minimums, school zone constraints).
-- **Segment by mode/class/time-of-day**
-  - do not let freight-heavy peaks define all-day parameters; separate bus routes, school arrival windows.
+#### 2.2 Equity guardrails (implementation-ready)
+- **Stratify by place and policy**
+  - Keep separate parameter sets for school zones / high-VRU places.
 - **Do not degrade vulnerable-user service**
-  - track pedestrian delay, max ped wait, and (where available) bicycle service measures.
-- **Report person-delay (not just vehicle-delay)**
-  - combine volumes + occupancy assumptions to publish person-delay changes by movement.
-- **Equity focus corridors require higher scrutiny**
-  - tighter bounds, more conservative auto-updates, explicit sign-off.
+  - Track pedestrian wait distributions and apply stricter caps in equity-focus areas.
+- **Publish person-delay and distributional impacts**
+  - Report person-delay deltas by movement/time-of-day; don’t report only aggregate intersection delay.
 
-#### 5.3 Equity review template (who checks what)
+#### 2.3 Equity reporting template (copy/paste)
+```markdown
+# Calibration Equity Review — Parameter Set vX.Y.Z
 
-**Inputs**
-- Before/after (or baseline/new-parameter) report by corridor:
-  - person-delay by movement and time-of-day
-  - pedestrian wait distributions (median/p95/max)
-  - bus performance (on-time, dwell impacts) if relevant
-  - safety proxies from Section 4
+## A) Where the data came from
+- Sites included/excluded:
+- Time windows:
+- Data quality summary:
+- Stratification scheme:
 
-**Checks**
-- Any equity-focus area shows pedestrian wait increase beyond tolerance?
-- Any school-zone or high-place area shows speed proxy increase beyond target?
-- Any minor-street or side-street person-delay worsens materially while mainline improves?
+## B) Who might be impacted
+- Equity focus areas included:
+- School zones / high-VRU places:
+- Transit routes / detours:
 
-**Sign-off roles**
-- Signals engineer (technical), operations supervisor (field), safety reviewer, equity reviewer.
+## C) Before/after (or baseline/new-parameter) indicators
+- Person-delay change by movement (median/p95):
+- Pedestrian wait change (median/p95/max):
+- Bus travel-time reliability (if applicable):
+- Safety proxies (speeds/RLR/conflicts):
 
-**Internal publication**
-- Publish a short “parameter change note” + before/after dashboard snapshot to an internal log.
+## D) Decision
+- Approve / Approve with conditions / Reject
+- Conditions and required monitoring:
+- Rollback triggers:
+
+## E) Sign-off
+- Signals engineer:
+- Operations supervisor:
+- Safety reviewer:
+- Equity reviewer:
+```
+
+#### 2.4 Explicit sign-off roles
+- Signals engineer (bounds, movement definitions)
+- Operations supervisor (field feasibility, monitoring)
+- Safety reviewer (gates)
+- Equity reviewer (distributional checks)
 
 ---
 
-### 6) Change management + governance for continuous updates
+### 3) Sensor limits + data-quality budgets (freeze-update rules)
 
-ATSPM practice context: FHWA positions ATSPMs as enabling proactive, objectives-based signal management and continuous performance monitoring ([`fhwahop20002.pdf`](https://ops.fhwa.dot.gov/publications/fhwahop20002/fhwahop20002.pdf)). That implies calibration updates must be treated as controlled releases.
+FHWA’s signal timing guidance explicitly notes that it takes a few seconds for the first driver/vehicles to start moving on green, and that this **start-up lost time is commonly assumed to be ~2 seconds** ([`chapter3.htm`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter3.htm)). That’s a reminder that estimates must be robust to noise and measurement limits.
 
-#### 6.1 Roles
-- **Signals engineer (owner)**: sets allowable bounds, reviews movement definitions, approves timing use.
-- **Data engineer**: maintains pipeline, QA gates, time sync checks.
-- **Ops supervisor / TMC**: monitors performance dashboards, triggers rollback.
-- **Safety reviewer**: enforces Section 4 gates and safe-system policy alignment.
-- **Equity reviewer**: enforces Section 5 guardrails and reporting.
+#### 3.1 Data quality budgets (recommended structure)
+Define gates for each parameter family:
 
-#### 6.2 Versioning strategy (semver-like)
+- **Timestamp integrity**
+  - Gate: cabinet/server time offset beyond threshold → freeze.
+
+- **Detector health**
+  - Gate: stuck-on/stuck-off/chattering beyond threshold → freeze.
+
+- **Missingness**
+  - Gate: missing data minutes beyond threshold → freeze.
+
+- **Sample size**
+  - Gate: not enough saturated cycles or steady-state headways per bin → do not update; pool or fall back.
+
+- **Stability**
+  - Gate: sudden parameter jump → investigate (construction, detection faults) rather than update.
+
+#### 3.2 Confidence scoring (must ship with every estimate)
+Each published value should include:
+- `estimate`, `confidence_score (0–1)`, `sample_size`, `lookback_window`, `data_health_status`, `last_good_version`.
+
+#### 3.3 Freeze windows
+Freeze updates:
+- immediately after any major retiming/plan deployment,
+- during major construction and planned special events affecting the corridor,
+- during detection maintenance or firmware upgrades.
+
+---
+
+### 4) Disentangling behavior vs geometry/control (metadata + spillback regime separation)
+
+FHWA’s timing guidance notes that saturation flow varies with geometry and constraints (lanes, grades, conflicts, parking, bus movements, etc.), and commonly ranges **~1,500–2,000 pcphpl** ([`chapter3.htm`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter3.htm)). Treat geometry/control as first-class features so you don’t mislabel design problems as “driving style.”
+
+#### 4.1 Required site metadata schema (minimum)
+Per intersection and per lane group:
+- intersection ID, movement ID/lane group ID, served phase(s)
+- lane count and lane use (exclusive/shared)
+- grade, curb radii / turn bay length (where available)
+- transit stops near stop line, parking/loading presence
+- posted speed + any target-speed policy
+- downstream bottleneck distance + spillback risk notes
+- detector type + placement + maintenance date
+
+#### 4.2 Regime detection: normal vs blocked (spillback/downstream blocking)
+Explicitly classify cycles into regimes:
+- **Normal saturated discharge** (queue clears, steady flow reached)
+- **Blocked/oversaturated** (green wasted due to downstream blockage)
+
+Operational rule:
+- Do **not** use blocked cycles to estimate saturation headway.
+- Publish a separate “blocked regime” model parameter used only when spillback indicators are active.
+
+---
+
+### 5) Change management (versioning, approvals, audit/rollback, cadence)
+
+Treat calibration updates like controlled software releases.
+
+#### 5.1 Versioning scheme
 - Parameter set ID: `city-signalcal/vMAJOR.MINOR.PATCH`.
-  - **MAJOR**: methodology changes (new estimator, new regime model, new metadata schema).
-  - **MINOR**: new corridors/intersections, new stratification dimensions.
-  - **PATCH**: data refresh within same method, small bounded drift.
+  - MAJOR: estimator/method changes, new metadata schema
+  - MINOR: new sites/strata
+  - PATCH: data refresh within bounds
 
-Store with:
-- diff summary (what changed, where, why),
-- data health snapshot,
-- safety/equity check results,
-- approval signatures.
+#### 5.2 Approval workflow
+- PATCH auto-merge allowed only if:
+  - data-quality gates pass,
+  - confidence is high,
+  - safety regression checks pass,
+  - equity review passes.
+- Anything else requires human review + signatures.
 
-#### 6.3 Approval workflow
-- **Auto-update allowed** (PATCH only):
-  - small drift within confidence and within caps, *and* safety/equity regression tests pass in twin.
-- **Human review required**:
-  - large parameter shifts,
-  - equity-focus corridors,
-  - school zones / high VRU areas,
-  - new regime detection logic,
-  - clearance/ped timing touching (generally disallowed here).
+#### 5.3 Update cadence + freeze windows
+- Routine updates: monthly/seasonal.
+- Freeze windows: after retiming, construction, special events.
 
-#### 6.4 Cadence rules
-- **Routine update frequency**: monthly (parameters), seasonal re-baseline.
-- **Freeze windows**: construction periods, special events, immediately after major retiming.
-- **Recertification**: after detector upgrades, firmware changes, geometry changes.
+#### 5.4 Operator communications
+- Publish a “what changed / expected impacts / rollback triggers” note.
 
-#### 6.5 Operator-facing communications
-- Provide “what changed / expected effect / rollback plan” to field staff.
-- Keep a simple mapping from parameter change → likely observable effect (e.g., shorter queues on approach A, possible longer ped wait on cross street unless constrained).
+---
+
+### 6) Deployable parameter table (with cited typical ranges where available)
+
+The table below is “deployable” because it is explicit about inputs, methods, cadence, and failure modes; it includes **typical ranges only where a public FHWA source provides them**.
+
+| Parameter | Definition | Data | Method | Cadence | Typical ranges (cited) | Failure modes |
+|---|---|---|---|---|---|---|
+| Start-up lost time | Additional time used by the first few queued vehicles on green before steady discharge | Phase change timestamps + stop-line discharge events | Measure the early headways vs steady headway; robust aggregation across days | Quarterly / after major change | Commonly assumed ~2 s ([`chapter3.htm`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter3.htm)) | Clock drift; no true queue; detector not at stop bar |
+| Saturation headway / flow | Steady headway (s/veh) and resulting flow under continuous queue discharge | Stop-line per-vehicle departure times | Use vehicles after startup (e.g., 4th onward); trimmed mean/median | Monthly/seasonal | sat flow commonly ~1,500–2,000 pcphpl ([`chapter3.htm`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter3.htm)) | Spillback interrupts; mixed lane groups; short greens |
+| Blocked-regime discharge modifier | Discharge under downstream blocking/oversaturation | Occupancy/queue indicators + downstream status | Classify blocked cycles; estimate separate regime | Event-triggered | — | Misclassification; missing downstream sensing |
+| Heavy-vehicle factor | Effect of heavy vehicles on discharge/headway | Classification + headways | Stratify by class; publish confidence intervals | Semiannual | — | Misclassification; low samples |
+| Permissive-turn service rate | Service rate under permissive conflicts | Protected vs permissive intervals + opposing flow | Regime model by opposing demand | Plan-dependent | — | Treating permissive as protected; opposing detection faults |
 
 ---
 
@@ -389,42 +337,33 @@ Store with:
 ---
 
 ## Implementation Checklist
-- [ ] Select pilot intersections with reliable detection + high-resolution logs (Phase 1).
+- [ ] Select pilot intersections with reliable detection + high-resolution logs.
 - [ ] Build and validate phase-to-movement mapping and detector inventory.
-- [ ] Implement data quality & missingness budget gates (Section 2).
-- [ ] Implement metadata schema and stratification plan (Section 3).
-- [ ] Stand up parameter estimation pipeline with confidence scoring (Phase 2).
-- [ ] Integrate parameters into twin; run sensitivity + holdout validation (Phase 3).
-- [ ] Define and implement safety gates + regression tests (Section 4).
-- [ ] Define and implement equity guardrails + reporting (Section 5).
-- [ ] Establish parameter versioning, approvals, and rollback workflow (Section 6).
-- [ ] Run shadow → limited production go/no-go; document acceptance and rollback triggers (Section 4.3).
+- [ ] Define and implement data-quality budgets + freeze rules (Section 3).
+- [ ] Define metadata schema and regime classification (Section 4).
+- [ ] Stand up parameter estimation pipeline with confidence scoring.
+- [ ] Integrate parameters into twin; run holdout validation.
+- [ ] Define safety proxies, go/no-go gates, and rollback triggers (Section 1).
+- [ ] Define equity guardrails, reporting template, and sign-off roles (Section 2).
+- [ ] Establish versioning, approvals, audit logging, and update cadence (Section 5).
 
 ## Governance / Change-Control Runbook
-1. **Propose change**: new parameter set draft produced by pipeline.
-2. **Data QA gate**: verify detector health, timestamp integrity, sample-size gates.
-3. **Twin regression**: run safety regression tests + performance validation.
-4. **Equity review**: run person-delay + pedestrian wait reports; check equity-focus corridors.
-5. **Approval**:
-   - PATCH: auto-approve if all gates pass.
+1. **Propose**: pipeline produces a parameter set candidate (versioned).
+2. **QA gates**: detector health, missingness, timestamp integrity, sample-size gates.
+3. **Shadow validation**: twin prediction checks + safety regression checks.
+4. **Equity review**: run the equity template report; review equity-focus places.
+5. **Approve**:
+   - PATCH: auto-approve only if all gates pass.
    - MINOR/MAJOR: require signals engineer + ops + safety + equity sign-off.
-6. **Deploy**: publish version tag, update configs, set cooldown window.
-7. **Monitor**: ATSPM dashboards + safety proxies; daily checks for first week.
-8. **Rollback**: revert to last-good version if triggers fire; open incident ticket.
-9. **Postmortem**: document root cause, update gates/metadata.
+6. **Deploy**: publish version tag, update configs, set cooldown.
+7. **Monitor**: dashboards + safety proxies; daily checks for 1 week.
+8. **Rollback**: revert to last-good version if triggers fire; open an incident ticket.
+9. **Postmortem**: document root cause; update gates/metadata.
 
 ## Reference Links
-- FHWA Traffic Signal Timing Manual (2008): [`fhwa_hop_08_024.pdf`](https://ops.fhwa.dot.gov/publications/fhwahop08024/fhwa_hop_08_024.pdf)
+- FHWA Traffic Signal Timing Manual — Chapter 3 (lost time, saturation flow ranges): [`chapter3.htm`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter3.htm)
 - FHWA Automated Traffic Signal Performance Measures (ATSPM): [`fhwahop20002.pdf`](https://ops.fhwa.dot.gov/publications/fhwahop20002/fhwahop20002.pdf)
 - FHWA Safe System Approach for Speed Management (2023): [`Safe_System_Approach_for_Speed_Management.pdf`](https://highways.dot.gov/sites/fhwa.dot.gov/files/Safe_System_Approach_for_Speed_Management.pdf)
-
-## Completion Checklist
-- ✅ Safety validation (non-negotiables, proxies, go/no-go, twin regression): see **Section 4**.
-- ✅ Representativeness + equity impacts operationalized (guardrails, reporting, template review): see **Section 5**.
-- ✅ Sensor/data limitations + explicit data quality budgets: see **Section 2**.
-- ✅ Behavior vs geometry/control distinguished (metadata + stratification + regime detection): see **Section 3**.
-- ✅ Change management + governance (roles, versioning, approvals, cadence, comms): see **Section 6** + **Runbook**.
-- ⚠️ Concrete “typical ranges” for parameters: not added (requires accessible HCM/agency numeric tables); doc is structured to plug in agency-specific ranges once sourced.
 
 ---
 

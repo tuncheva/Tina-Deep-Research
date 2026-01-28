@@ -28,6 +28,7 @@ An **operator option menu** is a human-in-the-loop decision support interface wh
 - **ATSPM telemetry**: validate outcomes and improve ranking.
 
 ### Detailed Implementation Plan
+
 #### Phase 1: Operator Workflow Discovery and Action Inventory (Weeks 1–4)
 The agency should begin by observing operators during typical and high-stress situations to understand how decisions are actually made and what information is used, because a menu that does not match real workflow will be ignored. The traffic engineering team should list the actions that operators are allowed to perform today (plan switches, bounded split/offset changes, special mode activation) and should document which actions require engineering approval or field work. The team should translate legal and safety constraints into a “safe envelope,” including pedestrian minimums/clearance, maximum cycle boundaries, and limits on plan switching frequency, because the menu must prevent unsafe or non-compliant actions by design.
 
@@ -85,6 +86,164 @@ The program should continuously improve the menu by comparing predicted outcomes
 - Require explicit confirmation and rollback path.
 - Log reasons and outcomes.
 
+## Implementation Additions (Implementation-Ready)
+
+### 1) “Deployability gating” specification (Allowed/Blocked must be rigorous)
+“Deployable” must mean **this option can be safely executed right now on this exact infrastructure**. Treat deployability as a dedicated gating engine, not as a UI label.
+
+#### What deployable means (minimum contract)
+An option is **DEPLOYABLE** only if all **hard constraints** pass:
+
+- **Controller capability compatibility**
+  - feature support: coordination, phase holds/omits, TSP, preemption interface, plan transition modes.
+  - configuration support: phases actually mapped, detectors present where required.
+
+- **Transition feasibility**
+  - respects min greens, ped walk/clearance, yellow/red clearance.
+  - coordination transitions that won’t create unsafe “instant offsets” or flash states.
+  - rate limits: no thrashing (plan switches per corridor per time window).
+
+- **Pedestrian timing + accessibility**
+  - ped minimums (min walk + clearance) are preserved.
+  - ADA/accessibility policies preserved (e.g., audible/tactile timing; if applicable).
+
+- **Current mode constraints**
+  - coordination currently running? flash? manual control? preemption active? degraded detection?
+  - if incident preemption or emergency mode is active, only show options allowed under that mode.
+
+- **Safety-critical constraints are non-overridable**
+  - clearance intervals, ped minimums, prohibited phase sequences, intergreens.
+
+Options may also have **soft constraints** that produce WARNINGS (deployable but discouraged), such as increased ped delay distribution or high spillback risk.
+
+#### How constraints are authored
+Constraints are composed from:
+- **Policy contracts** (city rules): ped wait caps, max cycle ranges by TOD, “no degrade” corridors.
+- **Controller configuration inputs**: timing parameters, phase map, coordination groups.
+- **Intersection metadata**: geometry, approaches, school zone flags, transit priority corridors.
+
+Rule priority / arbitration:
+- **Hard fail** → BLOCKED (never shown as selectable)
+- **Soft warn** → WARN (shown with risk banner; may require supervisor acknowledgement)
+
+#### How deployability checks are tested and audited
+- **Unit tests** for each rule using synthetic intersection configs.
+- **Scenario regression suite**: replay recorded controller + detector/probe states; ensure same option yields same gating decision.
+- **Known-bad test cases**: must remain blocked forever (e.g., options that violate ped clearance).
+- **Change control**: constraints are versioned; changes require approval and release notes.
+
+#### Constraint table (template)
+| Constraint | Data required | Check logic (sketch) | Failure message | Operator action |
+|---|---|---|---|---|
+| Ped min walk/clearance preserved | controller ped timings; phase map | `new_walk>=min && new_clear>=min` | “Blocked: ped minimum would be violated at X.” | Pick another option; escalate to engineer |
+| Coordination transition feasible | coordination group; current offset; transition mode | “no immediate jump; transition method supported” | “Blocked: unsupported coordination transition.” | Use plan-change with approved transition |
+| Preemption active | preemption status | if active, allow only “monitor/hold safe” set | “Blocked: emergency preemption active.” | Follow incident SOP |
+| Data freshness | timestamps; sensor health | if required inputs stale → block or warn | “Blocked: data stale for travel-time input.” | Wait/retry; switch to conservative option |
+| Plan switch rate-limit | audit log; last switch time | `now-last_switch >= T_min` | “Blocked: rate limit (next allowed at HH:MM).” | Monitor; use non-switch option |
+
+**Telemetry alignment**: ATSPM provides high-resolution data and performance measures that support monitoring timing/operations and diagnosing issues (e.g., split failures, coordination, pedestrian delay use cases) ([`Automated Traffic Signal Performance Measures (FHWA-HOP-20-002)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm:1)). Use ATSPM-derived checks where feasible.
+
+### 2) Human factors and UI failure modes (beyond choice overload)
+Human factors problems in TMC environments are well-known; FHWA provides TMC human factors guidelines including topics such as operator workload/vigilance, multitasking, minimizing interruptions, keeping operators in the loop, and avoiding decisionmaking biases like confirmation bias and anchoring ([`Human Factors Guidelines for Transportation Management Centers (FHWA-HRT-16-060)`](https://www.fhwa.dot.gov/publications/research/safety/16060/16060.pdf:1)).
+
+#### Risks to explicitly design against
+- **Confirmation bias**: selecting the option that fits the operator’s initial hypothesis.
+- **Anchoring**: overweighting the top card even when evidence is weak.
+- **Automation bias**: over-trust in ranked suggestions; under-trust when system is right.
+- **Alarm fatigue**: warnings become background noise.
+- **Tunnel vision on one KPI**: optimizing delay while ignoring spillback/ped impacts.
+- **Inconsistency across shifts**: different operators interpret cards differently.
+
+#### UI patterns to mitigate (implementation rules)
+- **Small option set**: default 3–7 cards; more requires explicit “show more”.
+- **Default safe highlight**: visually mark “conservative” option (often #2) to reduce anchoring on the #1 recommendation.
+- **Consistent ordering**: safety-first ordering (blocked removed; warnings below).
+- **Progressive disclosure**:
+  - 10-second summary card: action + top 3 KPI deltas + confidence.
+  - details: evidence, constraints evaluated, assumptions.
+- **Required acknowledgement** for high-risk warnings.
+- **Training mode / playback**: shadow-mode replays with “what you would have clicked” and outcome.
+
+#### Minimum usability acceptance criteria
+- Median time-to-decision ≤ target (e.g., 30–60s) for standard incidents.
+- Error rate: 0 blocked actions applied; near-zero “wrong corridor” mistakes.
+- Operator trust calibration: survey + observed behavior shows both acceptance and appropriate skepticism.
+
+### 3) Accountability model (who is responsible for what; what evidence is stored)
+The system must make accountability explicit.
+
+#### Responsibility partitioning
+- **Operator responsibility**: situational judgment, partner coordination, final selection, notes.
+- **System responsibility**:
+  - only present deployable options,
+  - display uncertainty and data freshness,
+  - provide rollback contract,
+  - log faithfully.
+- **Engineering/admin responsibility**:
+  - constraint rule definitions,
+  - plan library quality,
+  - model calibration and KPI definitions,
+  - training materials.
+
+#### Evidence bundle captured at “click time” (minimum)
+Store an immutable record:
+- state snapshot (corridor/intersections, mode, current plans, active preemption/flash).
+- input health (timestamps, missing sensors, probe coverage).
+- option card shown (full text + KPI deltas + confidence).
+- constraints evaluated + pass/fail results (hard/soft).
+- who clicked, when, and reason/notes.
+- rollback plan + exit criteria + max duration.
+
+#### Post-incident review workflow
+- Review triggers:
+  - any rollback, any safety warning, any partner complaint, any bad outcome.
+- Attendees: ops supervisor, traffic engineer, safety/accessibility reviewer, partner liaison (as needed).
+- Outputs: tuning tasks, constraint-rule changes, UI copy changes, training updates.
+
+### 4) Predicted vs actual feedback loop (without optimizing what’s easiest to predict)
+Use a scorecard that separates prediction accuracy from decision quality.
+
+#### Scorecard structure
+- **Predicted vs realized KPIs**:
+  - error metrics (MAE/MAPE) by KPI and by context (TOD, incident type).
+  - calibration curves for confidence.
+- **Decision quality metrics** (domain outcomes):
+  - prevented spillback? stabilized queues? protected ped service?
+  - time-to-stabilize after action.
+
+#### Guardrails for model drift
+- **Freeze windows**: don’t update scoring weights during major event seasons without review.
+- **Human review** for any material scoring change.
+- **Metric selection bias monitoring**:
+  - ensure the model isn’t “getting better” only on easy-to-predict KPIs while harming safety/priority KPIs.
+
+#### Separate change tracks (avoid entanglement)
+- Simulation calibration parameters (model layer)
+- Scoring weights / KPI bundle definitions (policy layer)
+- Constraint rules (safety/compliance layer)
+
+Each track has its own versioning and approvals.
+
+### 5) Integration with incident command and external stakeholders
+Operators act in a broader incident management ecosystem.
+
+#### Incident management inputs
+- **Declared incident**: police/dispatch feed indicates closure, lanes blocked, control points.
+- **Transit operations**: detours, headway protection, temporary bus priority mode.
+- **Event/venue ops**: scheduled release windows, pedestrian surges.
+
+#### Communication artifacts
+For any applied option, auto-generate an **Action Summary**:
+- what changed (plan/splits/offsets/mode), where (geofence), when (timestamp), duration.
+- expected impact (top KPIs) + confidence.
+- constraints honored (e.g., ped mins protected).
+
+#### Permissions / escalations
+- Role-based permissions:
+  - operator can apply low-risk options,
+  - supervisor required for options with major tradeoffs,
+  - engineering approval required for template/library changes.
+
 ## MVP Deployment
 - One corridor.
 - 3 options: “do nothing”, “switch to plan B”, “split tweak template”.
@@ -96,8 +255,76 @@ The program should continuously improve the menu by comparing predicted outcomes
 - KPI improvements vs baseline.
 - Prediction accuracy and rollback rate.
 
-## References / Standards / Useful Sources
-- FHWA ATSPM: https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm
+---
+
+## Implementation Checklist
+- [ ] Document operator workflows and create action inventory (what is allowed today).
+- [ ] Define constraints as policy + controller config + geometry metadata.
+- [ ] Implement deployability gating engine (hard/soft rules) with unit + regression tests.
+- [ ] Build option generator bounded to safe templates (3–10 candidates max).
+- [ ] Implement scoring + confidence, using ATSPM/probe inputs and data freshness checks.
+- [ ] Build card UI with progressive disclosure and required acknowledgement for high risk.
+- [ ] Implement immutable audit logging with click-time evidence bundle.
+- [ ] Run shadow mode and evaluate predicted vs realized scorecards.
+- [ ] Train operators using playback scenarios including “system wrong” cases.
+- [ ] Establish governance: versioning, approvals, and drift monitoring.
+
+## Operator Workflow / SOP
+
+### SOP 0 — Standard decision loop
+1. Confirm the corridor and context (incident/event/normal ops).
+2. Review data health and confidence flags.
+3. Review top 3 option cards; expand details only as needed.
+4. Confirm constraints summary (ped mins, clearance, preemption state).
+5. Select option; add a short reason note.
+6. Confirm activation (explicit confirmation).
+7. Monitor KPIs + constraint alerts for `T_observe`.
+8. If goals not met or safety warnings appear: execute rollback contract.
+9. Log outcome; flag for review if unusual.
+
+### SOP 1 — When options are BLOCKED
+- Do not attempt manual overrides that violate hard constraints.
+- Switch to conservative “monitor/hold safe” option.
+- Escalate to supervisor/engineer if the situation demands action.
+
+### SOP 2 — Incident-command / preemption active
+- Follow incident command protocols.
+- Use only incident-approved options; the menu should suppress others.
+
+## Governance & Audit Runbook
+
+### Versioning
+- Constraint rules: semver-like versioning; hard-rule changes are MAJOR.
+- Option templates: versioned library; retire underperforming templates.
+- Scoring weights/KPI bundle: versioned with policy approvals.
+
+### Approval workflow
+- Hard constraint changes require safety/accessibility sign-off.
+- High-risk option templates require engineering + ops supervisor approval.
+
+### Audit and review
+- Maintain immutable logs of:
+  - options shown,
+  - gating outcomes,
+  - selected action,
+  - realized outcomes.
+- Monthly review:
+  - prediction calibration,
+  - rollback frequency,
+  - operator override reasons,
+  - “blocked but needed” incidents (gaps in library).
+
+## Reference Links
+- FHWA ATSPM overview and use cases: [`Automated Traffic Signal Performance Measures (FHWA-HOP-20-002)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm:1)
+- FHWA TMC human factors guidance: [`Human Factors Guidelines for Transportation Management Centers (FHWA-HRT-16-060)`](https://www.fhwa.dot.gov/publications/research/safety/16060/16060.pdf:1)
+
+## Completion Checklist
+- ✅ Deployability gating spec + constraint table: see **“1) Deployability gating”**.
+- ✅ Human factors + UI failure modes + acceptance criteria: see **“2) Human factors…”**.
+- ✅ Accountability model + click-time evidence bundle + review workflow: see **“3) Accountability model”**.
+- ✅ Predicted vs actual feedback loop + drift guardrails + separated change tracks: see **“4) Predicted vs actual feedback loop”**.
+- ✅ Integration with incident command and stakeholders + action summaries + permissions: see **“5) Integration…”**.
+- ✅ Final required sections added: **Implementation Checklist**, **Operator Workflow / SOP**, **Governance & Audit Runbook**, **Reference Links**, **Completion Checklist**.
 
 ---
 

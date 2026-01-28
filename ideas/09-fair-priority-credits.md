@@ -35,6 +35,7 @@ A digital twin is used to tune credit budgets and spending rules by forecasting 
 - **Audit dashboards**: credits spent by route/corridor/time + KPI outcomes.
 
 ### Detailed Implementation Plan
+
 #### Phase 1: Policy, Eligibility, and Budget Design (Weeks 1–6)
 The city should begin by aligning transit, traffic engineering, and emergency services on which priority requests will be in scope, because EVP typically has absolute priority while TSP often needs bounds and fairness rules. The team should define eligibility and verification mechanisms (for example, transit AVL-based requests, authenticated EVP, and optional bike corridor triggers) and should define what priority actions are allowed at which intersections. The city should then define a credit budget structure that makes sense operationally, such as credits per route per time window, corridor-level caps, and fairness caps that limit added delay to cross streets or neighborhoods. The policy team should document exception handling, including how emergencies override budgets and how conflicting requests are resolved.
 
@@ -93,6 +94,232 @@ The city should maintain a continuous improvement loop that adjusts budgets and 
 - Cap maximum disruption per cycle/time window.
 - Require audit log entries for each spend.
 
+## Implementation Additions (Implementation-Ready)
+
+### 1) Define budget units (impact-based, not just seconds/events)
+A “credit” must represent **scarce intersection capacity and disruption cost**, not just an abstract token. Use a unit that is:
+- computable in real time,
+- explainable,
+- comparable across locations,
+- improvable over time as instrumentation improves.
+
+#### Candidate budget units (with pros/cons)
+| Unit | Definition | Pros | Cons | Best for |
+|---|---|---|---|---|
+| **Seconds of green change** | `Δgreen_sec` (early green / green extension / red truncation) | simplest; controller-native | ignores who is harmed; ignores coordination damage | MVP; single isolated intersection |
+| **Priority events** | 1 credit per granted request | simple accounting | very coarse; gaming risk | early pilots; low request volumes |
+| **Marginal person-delay imposed on others** | estimated `Δ person-delay` on non-priority users | impact-based and fairness-aligned | needs data + estimation | mature ATSPM/probe deployments |
+| **Coordination disruption cost** | proxy for recovery: AOG degradation / offset recovery time / extra split failures | captures network harm | needs corridor telemetry | coordinated arterials |
+
+#### Real-time cheap impact estimation (vendor-neutral)
+Use a tiered estimator:
+1. **Tier 0 (fallback)**: cost = fixed seconds/events per treatment.
+2. **Tier 1 (ATSPM-based)**: infer extra red time imposed on opposing phases + estimate queue growth from split failures / occupancy proxies.
+3. **Tier 2 (person-delay)**: combine:
+   - arrivals/served counts (detectors),
+   - probe speeds (segment travel time),
+   - simple shockwave/queue model for added delay.
+
+Fallback when data missing:
+- assume conservative (higher) harm cost,
+- or deny non-critical priority and preserve emergency preemption.
+
+#### Recommended phased approach
+- Phase A: **seconds/events** credits + strict caps + robust logging.
+- Phase B: add **coordination disruption** proxies on coordinated corridors.
+- Phase C: graduate to **marginal person-delay** accounting after monitoring is stable.
+
+**Source alignment**: FHWA describes TSP treatments such as red truncation (early green) and green extension, and notes that priority may be accomplished via extending greens, altering phase sequences, or including special phases without interrupting coordination ([`Traffic Signal Timing Manual: Chapter 9`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)).
+
+### 2) Fairness constraints: operational definitions, accounting windows, and reporting
+“Fairness” becomes operational when you define **harm**, choose **accounting windows**, and enforce **caps**.
+
+#### Define “harm” per movement/area
+Choose a small set of harm measures with clear semantics:
+- **added delay** (seconds) or **person-delay** (preferred when feasible).
+- **max wait** (p95) for pedestrians or minor-street movements.
+- **queue spillback minutes** (time queue blocks upstream intersection/crosswalk).
+- **coordination degradation**: AOG drop or recovery time.
+
+#### Accounting windows
+Use multiple windows to prevent “death by a thousand cuts”:
+- **per cycle**: hard cap on how much a single request can disrupt.
+- **15-min rolling**: operational fairness (shift-level complaints).
+- **peak period/day**: predictable service for non-priority approaches.
+- **weekly**: equity reporting and policy review.
+
+#### Fairness rule patterns
+- **Per-approach cap**: max harm per approach per window.
+- **Rolling corridor cap**: total harm within a geofence.
+- **Disparity constraint**: limit difference across neighborhoods/approaches.
+- **Protected movements**: hard floors for ped phases near schools/hospitals.
+
+#### Reporting template: “credits statement”
+Publish (internally; and externally in summarized form):
+- credits spent by corridor/route/time.
+- who benefited (class: transit/emergency/freight/bike).
+- who “paid” (approaches/areas) and how much harm was imposed.
+
+### 3) Anti-gaming / abuse resistance controls (transparent + auditable)
+Priority is gameable if requests are cheap and verification is weak.
+
+Controls:
+- **Low-value/high-frequency detection**:
+  - repeated requests with minimal realized benefit.
+  - detect “spam”: high grant rate with low lateness or low passenger benefit.
+- **Rate limits and cooldowns**:
+  - per vehicle ID/route, per intersection, per corridor.
+- **Verification/classification checks**:
+  - transit: AVL validation + optionally schedule adherence triggers.
+  - emergency: authenticated preemption only; never count against budgets.
+  - misclassification safeguards: priority ≠ preemption.
+- **Exception policies**:
+  - incidents/special events allow temporary budget changes with explicit reason code and audit trail.
+
+### 4) Architecture + real-time feasibility: where the policy engine lives and how it fails safely
+
+#### Placement options
+| Option | Where | Pros | Cons | Best fit |
+|---|---|---|---|---|
+| Edge | controller/cabinet | ultra-low latency; resilient to comms loss | limited compute; harder citywide fairness | isolated intersections; EVP enforcement |
+| Corridor edge node | field cabinet/edge server | good latency + corridor context | needs field hardware | coordinated arterials |
+| Central (TMC/ATMS) | central server | global budgets + reporting | comms dependency; latency | citywide policy, auditing |
+
+#### Latency and reliability
+- What must happen **within a cycle**: eligibility check, hard safety gating, basic budget check.
+- What can be delayed: reporting aggregation, weekly equity summaries.
+
+#### Safety/feasibility gating
+Reuse a deployability gate concept:
+- controller constraints, ped mins, clearance intervals.
+- coordination maintenance and recovery.
+
+**Source alignment**: FHWA distinguishes **preemption** (“transfer of normal operation … to a special control mode”) from **signal priority** (altering existing operations to serve a priority vehicle without disrupting coordination). Source: FHWA *Traffic Signal Timing Manual*, Chapter 9 ([`chapter9`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)).
+
+#### Failure behavior (safe defaults)
+- **Comms loss**: revert to controller-native default TSP rules; central budgets stop decrementing; log locally.
+- **Policy engine down**: disable non-critical priority; preserve EVP.
+- **Stale budgets / untrusted time**: freeze spending; allow only emergency.
+- **Data missing**: switch to conservative (higher) cost or deny optional requests.
+
+### 5) Stakeholder governance: who sets budgets, how conflicts are resolved, and how changes are managed
+
+#### Roles / RACI (example)
+| Decision | Signals Ops | Transit Agency | Emergency Services | Freight Program | Equity Office | City Leadership |
+|---|---|---|---|---|---|---|
+| Define eligible classes | R | C | C | C | C | A |
+| Set transit budgets | C | R | I | I | C | A |
+| Define EVP policy | I | I | R/A | I | C | C |
+| Approve fairness constraints | R | C | C | C | R/A | A |
+| Publish reports | R | C | I | I | C | A |
+
+#### Budget-setting process
+- initial allocation: pilot-based with transparent assumptions.
+- seasonal adjustments: school year, construction, demand shifts.
+- incident overrides: time-bounded with explicit approvals.
+
+#### Conflict arbitration framework (default)
+1. **Safety/legal minima**
+2. **Emergency preemption**
+3. **Transit commitments** (headway/OTP) within caps
+4. **Multimodal/equity constraints**
+5. **Efficiency** (delay minimization)
+
+#### Change control + transparency
+- policy versioning (semver-like) + release notes.
+- public-facing summaries of what changed and why.
+
+**Source alignment**: FHWA’s environmental justice definition includes adverse effects such as congestion and denial/reduction/delay of benefits, and defines “disproportionately high and adverse” impacts on minority/low-income populations ([`FHWA Order 6640.23`](https://highways.dot.gov/laws-regulations/directives/orders/664023:1)). Use this to justify “no repeat harm” and disparity constraints.
+
+### 6) Concrete implementation artifacts (deployable)
+
+#### Machine-readable policy example (YAML)
+```yaml
+policy_id: "PRIORITY-CREDITS-01"
+version: "1.0.0"
+credit_unit:
+  type: "seconds_green"   # later: "person_delay" | "coord_disruption"
+
+classes:
+  emergency:
+    eligibility: { auth: "evp_authenticated" }
+    treatments_allowed: ["preemption"]
+    budget: { type: "unlimited" }
+    override: true
+
+  transit:
+    eligibility:
+      auth: "avl_signed"
+      conditions:
+        - "behind_schedule >= 60s"  # optional; policy choice
+    treatments_allowed: ["early_green", "green_extension"]
+    budgets:
+      - scope: { route: "Route_10", window: "weekday_peak_am" }
+        amount: 300   # seconds of green change
+      - scope: { corridor: "MainSt", window: "weekday_peak_pm" }
+        amount: 600
+    fairness:
+      per_approach_harm_cap:
+        window: "15m"
+        max_added_delay_sec: 120
+      protected_movements:
+        - { movement: "ped_school_crossing", min_service: "never_degrade" }
+    anti_abuse:
+      cooldown_sec: 120
+      rate_limit:
+        per_vehicle_per_15m: 6
+        per_intersection_per_15m: 20
+
+  freight:
+    eligibility: { auth: "fleet_signed" }
+    treatments_allowed: ["green_extension"]
+    budgets:
+      - scope: { corridor: "IndustrialAve", window: "weekday_midday" }
+        amount: 120
+
+exception_modes:
+  incident:
+    activation: { source: "TMC_declared" }
+    temporary_budget_multiplier: 2.0
+    duration_max: "2h"
+    audit_required: true
+
+logging:
+  required_fields:
+    - request_id
+    - timestamp
+    - intersection_id
+    - requester_class
+    - requester_id
+    - eligibility_result
+    - budget_before
+    - cost_estimate
+    - decision
+    - treatment_applied
+    - recovery_action
+    - predicted_harm
+    - realized_harm
+    - operator_notes
+```
+
+#### Event/log schema (audit trail)
+Events (append-only):
+- `request_received`
+- `eligibility_decided`
+- `credit_checked`
+- `treatment_applied`
+- `recovery_completed`
+- `impact_measured`
+
+Each event includes: state snapshot, timing plan/mode, data freshness, and reason codes.
+
+#### KPI set for monitoring success
+- transit travel time reliability + headway adherence.
+- cross-street delay distributions (p50/p95) and ped delay where relevant.
+- coordination recovery time (post priority/preemption).
+- credit spend rates, denied-request rates, cooldown hits.
+- equity slices: impacts and benefits by neighborhood/time-of-day.
+
 ## MVP Deployment
 - One transit route on one corridor.
 - Two actions (green extension, early green).
@@ -105,8 +332,77 @@ The city should maintain a continuous improvement loop that adjusts budgets and 
 - Spillback/blocked-box frequency.
 
 ## References / Standards / Useful Sources
-- NTCIP 1211 (Signal Control and Prioritization): https://www.ntcip.org/file/2018/11/NTCIP1211-v0224j.pdf
-- FHWA Traffic Signal Timing Manual: https://ops.fhwa.dot.gov/publications/fhwahop08024/fhwa_hop_08_024.pdf
+- NTCIP 1211 (Signal Control and Prioritization): [`NTCIP 1211`](https://www.ntcip.org/file/2018/11/NTCIP1211-v0224j.pdf)
+- FHWA Traffic Signal Timing Manual (TSP + Preemption overview): [`chapter9`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)
+- FHWA Order 6640.23 (Environmental Justice definitions): [`FHWA Order 6640.23`](https://highways.dot.gov/laws-regulations/directives/orders/664023)
+
+---
+
+## Implementation Checklist
+- [ ] Define requester classes, eligibility verification, and allowed treatments per intersection.
+- [ ] Choose initial credit unit (seconds/events) and define conversion tables per treatment.
+- [ ] Define fairness caps (per approach/corridor) and accounting windows (cycle/15m/day/week).
+- [ ] Implement policy engine with safe defaults (EVP always works; fail-safe on comms loss).
+- [ ] Implement controller adapters for early green/green extension and recovery logic.
+- [ ] Implement anti-abuse controls (cooldowns, rate limits, verification checks).
+- [ ] Implement audit log schema + dashboards (spent/denied/why + impacts).
+- [ ] Run shadow mode, validate estimator tiers, then pilot in assisted mode.
+- [ ] Publish internal “credits statement”; iterate budgets and caps through governance cadence.
+
+## Operations Runbook (SOP)
+
+### SOP 0 — Normal operations
+1. Receive priority request (AVL/PRG) with requester metadata.
+2. Verify eligibility and classify request (priority vs preemption).
+3. Run safety/feasibility gating (ped mins, clearance, mode constraints).
+4. Evaluate credit availability and fairness caps for the relevant window.
+5. Select treatment (early green / green extension / none) and apply.
+6. Monitor recovery to coordination; log treatment and recovery completion.
+7. Measure realized impacts; update spend ledgers.
+
+### SOP 1 — Emergency preemption
+- Always grant authenticated EVP.
+- Log the preemption, and track recovery/transition time.
+- Do not decrement transit/freight budgets.
+
+### SOP 2 — Incident / event override
+- Require declared incident/event activation.
+- Apply temporary budget multipliers only within duration bounds.
+- Record approvals and reason codes.
+
+### SOP 3 — Failure modes
+- Comms loss: revert to controller-local default rules; preserve EVP.
+- Engine down / time untrusted: disable non-critical priority.
+
+## Governance & Change-Control Runbook
+
+### Policy versioning
+- `MAJOR`: changes to eligibility, fairness caps, or arbitration order.
+- `MINOR`: budget adjustments within the same policy structure.
+- `PATCH`: logging/reporting metadata updates.
+
+### Review cadence
+- weekly ops review: hotspots, denied requests, recovery problems.
+- monthly policy review: equity slices, corridor performance, anti-abuse signals.
+- seasonal recalibration: route changes, construction, schedule changes.
+
+### Dispute resolution and transparency
+- Publish aggregate reports (spend + outcomes) and equity slices.
+- Keep security-sensitive details (e.g., EVP identifiers) internal.
+
+## Reference Links
+- [`chapter9`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)
+- [`NTCIP 1211`](https://www.ntcip.org/file/2018/11/NTCIP1211-v0224j.pdf)
+- [`FHWA Order 6640.23`](https://highways.dot.gov/laws-regulations/directives/orders/664023)
+
+## Completion Checklist
+- ✅ Budget units (seconds/events/person-delay/coord disruption) + phased approach: see **“1) Define budget units”**.
+- ✅ Fairness constraints + windows + reporting templates: see **“2) Fairness constraints…”**.
+- ✅ Anti-gaming/abuse resistance: see **“3) Anti-gaming…”**.
+- ✅ Architecture + failure-safe behavior: see **“4) Architecture…”**.
+- ✅ Stakeholder governance + arbitration + change control: see **“5) Stakeholder governance…”**.
+- ✅ Concrete artifacts (policy YAML, log schema, KPIs): see **“6) Concrete implementation artifacts”**.
+- ✅ Final required sections added: **Implementation Checklist**, **Operations Runbook (SOP)**, **Governance & Change-Control Runbook**, **Reference Links**, **Completion Checklist**.
 
 ---
 
