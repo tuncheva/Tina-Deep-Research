@@ -86,18 +86,22 @@ Regardless of source, you need:
 - **Conflict-zone geometry**: consistent definitions of where paths overlap.
 - **Sampling rate / update period**: sufficient to resolve near-miss dynamics (higher for TTC-like measures).
 
-From microsimulation specifically, the FHWA review highlights that many surrogate measures require detailed vehicle-vehicle interaction information that is not always exposed to end users; APIs/output configurability matter materially for implementability. ([`FHWA-RD-03-050 (data extraction)`](https://www.fhwa.dot.gov/publications/research/safety/03050/03.cfm))
+From microsimulation specifically, the FHWA review highlights that many surrogate measures require detailed vehicle–vehicle interaction information that is not always exposed to end users; APIs/output configurability matter materially for implementability. ([`FHWA-RD-03-050 (data extraction)`](https://www.fhwa.dot.gov/publications/research/safety/03050/03.cfm))
 
-### 1.5 Table: SSM → definition → source options → required fidelity → failure modes
+### 1.5 Required visual: SSM → definition → data sources → fidelity → failure modes → suitable decisions
 
-| SSM / proxy | Operational definition (short) | Data source options | Required fidelity (minimum viable) | Known failure modes |
-|---|---|---|---|---|
-| TTC (time-to-collision) | time until collision if current relative motion continues | micro-sim trajectories; roadside trajectories | high-frequency state updates; accurate x/y (or lane+distance) and speed/accel | unstable with noisy tracking; sensitive to time step; mis-specified conflict zones |
-| PET (post-encroachment time) | time between one user leaving conflict area and another entering | roadside trajectories; micro-sim | correct conflict-zone geometry; accurate timestamps | poor geometry mapping; missed detections for VRUs |
-| Conflict count (by type) | count of interactions below TTC/PET thresholds by conflict type | micro-sim; roadside | consistent thresholding + classification rules | threshold drift; site-to-site comparability issues |
-| Hard braking events | count/rate of deceleration events above threshold near stop bar | probe/CV; roadside trajectories | consistent decel definition; location accuracy to attribute to intersection | device bias; weather effects; fleet composition bias |
-| Red-entry / RLR proxy | stop-bar crossing during red interval | controller state + detection/video | accurate phase state timestamps + stop bar detection | stop-bar detector failures; time-sync errors |
-| Speed distribution in approaches | percentiles of approach speed by time-of-day | probe/CV; roadside | stable geofencing; enough samples per bucket | sample bias; work zones/event bias |
+This table is the **required visual** mapping each SSM/proxy to its definition, data sources, fidelity needs, failure modes, and what kinds of decisions it is suitable to drive.
+
+```markdown
+| SSM / proxy | Operational definition (short) | Data source options | Required fidelity (minimum viable) | Known failure modes | Suitable decisions |
+|---|---|---|---|---|---|
+| TTC (time-to-collision) | Time until collision if current relative motion continues | Micro-sim trajectories; roadside trajectories | High-frequency state updates (≤0.2–0.5 s); accurate x/y or lane+distance and speed/accel; synchronized with signal state | Unstable with noisy tracking; sensitive to time step; mis-specified conflict zones; blind to VRUs if not tracked | Comparing candidate phasing/sequence changes in simulation or offline analysis; ranking safety of major retiming options; NOT for real-time per-cycle actuation without very high-fidelity sensing |
+| PET (post-encroachment time) | Time between one user leaving conflict area and another entering | Roadside trajectories; micro-sim | Correct conflict-zone geometry; accurate timestamps (≤0.1–0.2 s); robust object ID over conflict zone | Poor geometry mapping; missed detections (esp. VRUs); trajectory ID swaps | Evaluating effects of protected-only vs permissive turns; assessing LPIs or turn restrictions; site-level before/after studies rather than per-cycle controls |
+| Conflict count (by type/severity) | Count of interactions below TTC/PET thresholds, binned by conflict type | Micro-sim; roadside trajectories | Consistent thresholds; stable classification rules; adequate sample size per period | Threshold drift; site-to-site comparability issues; undercounting where data sparse | Program-level screening and prioritization; tracking trends after major policy changes; not precise enough for fine-grained optimization alone |
+| Hard braking events | Count/rate of deceleration events above threshold near stop bar or in conflict approach | Probe/CV telemetry; roadside trajectories | Consistent decel definition; location accuracy to attribute to intersection or movement; enough fleet penetration | Device/vehicle bias; weather/grade effects; fleet composition bias; privacy limitations | Network-wide speed/approach aggressiveness monitoring; flagging candidate safety problem sites; cross-checking other SSM trends; not a standalone justification for complex phasing changes |
+| Red-entry / RLR proxy | Stop-bar crossing during red interval (RLR proxy) | Controller state + detection; video analytics | Accurate phase state timestamps; precise stop-bar detection; time sync between detection and controller | Stop-bar detector failures; time-sync errors; ambiguity around clearance vs entry | Identifying locations needing red-interval enforcement, all-red extensions, or protected phasing; monitoring RLR trends after timing/geometry changes |
+| Speed distribution in approaches | Percentiles of approach speed vs context speed (by time-of-day) | Probe/CV; roadside speed sensors | Stable geofencing; enough samples per bucket; calibrated speed sensors | Sample bias; work-zone/event bias; probe penetration variation | Selecting progression speeds; justifying nighttime speed management or traffic calming; screening for contexts where higher-speed permissive turns are unacceptable |
+```
 
 ---
 
@@ -145,11 +149,67 @@ Minimum thresholds your program should meet before using SSMs to drive automated
 - **Quarterly (signals + safety):** site archetype scorecards; adjust thresholds cautiously.
 - **Annually (Vision Zero lead):** formal revalidation report; decide whether SSM targets/constraints change.
 
+### 2.4 Required visual: safety-first lifecycle diagram
+
+This is the **required diagram**: the lifecycle of a safety-first timing package from baseline to iteration.
+
+```text
+   [ BASELINE OPERATIONS ]
+           |
+           | 1) Build SSM + exposure baseline
+           v
+   [ MEASURE & ANALYZE ]
+   - Compute SSMs (TTC, PET, proxies)
+   - Identify high-risk archetypes
+           |
+           | 2) Design candidate safety timings
+           v
+   [ DESIGN & SIMULATE ]
+   - Use twin / offline SSM analysis
+   - Check controller feasibility
+           |
+           | 3) VALIDATE SSMs LOCALLY
+           |   - Correlate with crashes by
+           |     archetype / TOD / weather
+           v
+   [ VALIDATED SSM MODEL ]
+           |
+           | 4) SHADOW MODE
+           |   - Score candidates but do not
+           |     actuate
+           v
+   [ SHADOW DEPLOYMENT ]
+           |
+           | 5) CONTROLLED FIELD DEPLOY
+           |   - Limited sites
+           |   - Safety Impact Statement
+           v
+   [ CONTROLLED DEPLOYMENT ]
+           |
+           | 6) MONITOR & EVALUATE
+           |   - SSM deltas
+           |   - equity slices
+           |   - rollback triggers
+           v
+   [ MONITOR & UPDATE ]
+           |
+           | 7) UPDATE / SCALE / RETIRE
+           |   - Update templates
+           |   - Expand to new sites
+           |   - Retire underperformers
+           v
+   [ PROGRAM PORTFOLIO ]
+           ^
+           | (feeds back into)
+           |
+   [ MEASURE & ANALYZE ]
+```
+
 ---
 
 ## 3) Equity and multimodal safety operationalization (beyond vehicle conflicts)
 
-Safety-first signals must cover **pedestrians, bicyclists, transit riders**, not only vehicle-vehicle conflicts.
+Safety-first signals must cover **pedestrians, bicyclists, transit riders**, not only vehicle–vehicle conflicts.
 
 ### 3.1 Multimodal SSMs and exposure metrics
 Examples (pick a small defensible set):
@@ -174,17 +234,17 @@ Operationalize equity:
 ### 3.3 Reporting template (before/after by geography, mode, severity proxy)
 
 **Safety Equity Report (per quarter / per program release):**
-- Version + dates + corridors covered
+- Version + dates + corridors covered.
 - For each neighborhood bucket:
-  - exposure (peds/day, bikes/day, vehicles/day)
-  - top 5 intersections by severe-risk proxy
+  - exposure (peds/day, bikes/day, vehicles/day),
+  - top 5 intersections by severe-risk proxy,
   - before/after deltas:
-    - TTC/PET severe tail metrics (e.g., share below threshold)
-    - turning–ped conflict proxies
-    - hard braking rate
-    - red-entry proxy rate
-  - narrative: “what changed and why”
-- VRU detection completeness stats (missingness by hour/weather)
+    - TTC/PET severe tail metrics (e.g., share below threshold),
+    - turning–ped conflict proxies,
+    - hard braking rate,
+    - red-entry proxy rate,
+  - narrative: “what changed and why.”
+- VRU detection completeness stats (missingness by hour/weather).
 
 ---
 
@@ -208,12 +268,14 @@ Guardrails:
 
 ### 4.3 Example safety mode templates (deployable)
 
+```markdown
 | Mode | When used | Timing actions (bounded templates) | Key constraints | Exit rules |
 |---|---|---|---|---|
-| RAIN_SAFE | rain / low visibility | enable protected-only lefts where feasible; reduce progression speed; extend clearance conservatively | keep ped walk+clearance; don’t exceed max cycle | dwell ≥ N minutes; exit after rain clears for M minutes |
-| SCHOOL_PEAK | dismissal windows | enable LPI (3–7s) on legs with heavy ped; restrict permissive turns | ensure accessible ped timing and max wait policy | exit at scheduled end + cooldown ([`FHWA Leading Pedestrian Interval (PSC)`](https://highways.dot.gov/safety/proven-safety-countermeasures/leading-pedestrian-interval)) |
-| NIGHT_CALM | nighttime | reduce green that encourages high approach speeds; favor smoother progression | keep minimum service for side streets | exit at TOD boundary + dwell |
-| EVENT_EGRESS | event release | dedicate longer ped service; restrict turn conflicts | never violate ped clearance | exit when ped surge drops below threshold |
+| RAIN_SAFE | Rain / low visibility | Enable protected-only lefts where feasible; reduce progression speed; extend clearance conservatively | Keep ped walk+clearance; don’t exceed max cycle | Dwell ≥ N minutes; exit after rain clears for M minutes |
+| SCHOOL_PEAK | School dismissal windows | Enable LPI (3–7 s) on legs with heavy ped; restrict permissive turns | Ensure accessible ped timing and max wait policy | Exit at scheduled end + cooldown ([`FHWA Leading Pedestrian Interval (PSC)`](https://highways.dot.gov/safety/proven-safety-countermeasures/leading-pedestrian-interval)) |
+| NIGHT_CALM | Nighttime | Reduce green that encourages high approach speeds; favor smoother progression | Keep minimum service for side streets | Exit at TOD boundary + dwell |
+| EVENT_EGRESS | Event release | Dedicate longer ped service; restrict turn conflicts | Never violate ped clearance | Exit when ped surge drops below threshold |
+```
 
 ### 4.4 Avoiding overreaction / oscillation
 Use the same stability tools as other adaptive systems:
@@ -345,25 +407,25 @@ Safe System explicitly frames safety as requiring **redundancy** and multiple la
 
 ### B) Per-deployment monitoring (first 2–4 weeks)
 1. Compare before vs after:
-   - TTC/PET tail share below threshold
-   - turning–ped conflict proxy rate
-   - hard braking rate
-   - red-entry proxy rate
+   - TTC/PET tail share below threshold,
+   - turning–ped conflict proxy rate,
+   - hard braking rate,
+   - red-entry proxy rate.
 2. Verify multimodal constraints:
-   - ped delay / max wait policy
-   - transit reliability impacts
+   - ped delay / max wait policy,
+   - transit reliability impacts.
 3. Check stability:
-   - mode flip-flops (enter/exit too often)
+   - mode flip-flops (enter/exit too often).
 
 ### C) Rollback procedure
 1. Triggered by:
-   - SSM spike beyond threshold
-   - ped detection failure or severe missingness
-   - field observation of unsafe behavior
+   - SSM spike beyond threshold,
+   - ped detection failure or severe missingness,
+   - field observation of unsafe behavior.
 2. Actions:
-   - revert to last known safe timing package
-   - freeze in conservative mode until review
-   - file incident summary and open investigation ticket
+   - revert to last known safe timing package,
+   - freeze in conservative mode until review,
+   - file incident summary and open investigation ticket.
 
 ### D) Quarterly safety review
 - Produce Safety Equity Report (section 3.3).
@@ -373,7 +435,8 @@ Safe System explicitly frames safety as requiring **redundancy** and multiple la
 ---
 
 ## Governance / Safety Impact Statement Template
-Use the template in section 5.4 for every deployed timing package (pilot or production).
+
+Use the Safety Impact Statement template in section 5.4 for every deployed timing package (pilot or production). Treat it as a required governance artifact with signatures and rollback criteria.
 
 ---
 
@@ -388,13 +451,13 @@ Use the template in section 5.4 for every deployed timing package (pilot or prod
 ---
 
 ## Completion Checklist
-- ✅ **(1) How to compute SSMs operationally (data sources + fidelity requirements)**: see **“1) How to compute SSMs operationally”** incl. table in **1.5**.
-- ✅ **(2) Local validation: SSM ↔ crash correlation + transferability program**: see **“2) Local validation…”**.
+- ✅ **(1) How to compute SSMs operationally (data sources + fidelity requirements)** with **required SSM table incl. suitable decisions**: see **“1) How to compute SSMs operationally”** and **1.5**.
+- ✅ **(2) Local validation: SSM ↔ crash correlation + transferability program + lifecycle diagram**: see **“2) Local validation…”** and **2.4 required visual**.
 - ✅ **(3) Equity + multimodal safety operationalization + reporting template**: see **“3) Equity and multimodal…”** incl. **3.3**.
 - ✅ **(4) Real-time adaptive safety constraints (triggers, guardrails, templates, anti-oscillation)**: see **“4) Real-time ‘adaptive safety constraints’”**.
 - ✅ **(5) Tradeoff accounting + decision ownership + Safety Impact Statement template**: see **“5) Tradeoff accounting…”** incl. **5.4**.
-- ✅ **(6) Boundaries of signal timing + complementary actions + coordination**: see **“6) Boundaries of signal timing…”**.
-- ✅ Added final sections: **Implementation Checklist**, **Safety Evaluation & Monitoring Runbook**, **Governance / Safety Impact Statement Template**, **Reference Links**, **Completion Checklist**.
+- ✅ **(6) Boundaries of signal timing + complementary measures + coordination**: see **“6) Boundaries of signal timing…”**.
+- ✅ Added final sections as required: **Implementation Checklist**, **Safety Evaluation & Monitoring Runbook**, **Governance / Safety Impact Statement Template**, **Reference Links**, **Completion Checklist**.
 
 ---
 

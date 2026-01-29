@@ -5,13 +5,14 @@ Like a referee explaining a call, an explainable signal doesn’t just change ti
 
 ## What it is (precise)
 **Explainable signals** attach an auditable explanation to each non-trivial timing decision (plan switch, major split/offset change, mode transition, priority action). Explanations are not free-form storytelling; they are structured **reason codes + evidence** generated at decision time:
+
 - reason code taxonomy (controlled vocabulary)
 - key inputs (sensor/health signals, thresholds)
 - predicted deltas (twin or model outputs)
 - constraints that were binding (e.g., ped mins)
 - operator overrides and notes
 
-This supports accountability, faster diagnosis, and governance aligned with risk management frameworks (for example, the [NIST AI Risk Management Framework](https://doi.org/10.6028/NIST.AI.100-1)).
+This supports accountability, faster diagnosis, and governance aligned with risk management frameworks (for example, the [NIST AI Risk Management Framework](https://doi.org/10.6028/NIST.AI.100-1:1)).
 
 ## Benefits
 - **Trust and accountability**: operators and auditors can see why changes happened.
@@ -79,7 +80,7 @@ The agency should establish a governance process where operators and engineers r
 
 ## Canonical Evidence Schema & Portability Strategy
 
-This section turns explainable signals into a **city-defined, vendor-adaptable contract**. The city owns the canonical schema and reason code taxonomy; each vendor maps its internal events into that schema. This mirrors how security and audit standards encourage well-defined log formats with local extensions (e.g., [NIST SP 800-92, Guide to Computer Security Log Management](https://csrc.nist.gov/publications/detail/sp/800-92/final)).
+This section turns explainable signals into a **city-defined, vendor-adaptable contract**. The city owns the canonical schema and reason code taxonomy; each vendor maps its internal events into that schema. This mirrors how security and audit standards encourage well-defined log formats with local extensions (e.g., [NIST SP 800-92, Guide to Computer Security Log Management](https://csrc.nist.gov/publications/detail/sp/800-92/final:1)).
 
 ### City-Owned Canonical Model
 
@@ -230,6 +231,38 @@ Below is an implementation-oriented JSON example for a **single decision event**
 }
 ```
 
+### Canonical schema in YAML (compact example)
+
+A compact YAML view is useful in RFPs and technical appendices:
+
+```yaml
+schema_version: explainable-signals.v1   # required
+id: uuid-1234-...                        # required (alias of decision_id)
+timestamp_utc: 2026-01-28T08:17:32Z      # required
+source_system: atms-x                    # required
+
+location:                                # Tier 1 minimum
+  jurisdiction_id: city-123
+  intersection_id: int-045
+
+action:
+  action_type: plan_switch
+  scope: intersection
+
+trigger_context:
+  mode: adaptive
+  trigger_type: volume_threshold_crossed
+  reason_code: "210"
+
+uncertainty:
+  data_freshness_s: 4
+  sensor_health_overall: degraded
+
+security_metadata:
+  created_by: service:signal-decision-engine
+  storage_class: WORM-7y
+```
+
 ### Minimum vs Optional Fields (Tiered)
 
 Define **tiers** so you can deploy incrementally and so vendors know what is mandatory.
@@ -246,13 +279,13 @@ Define **tiers** so you can deploy incrementally and so vendors know what is man
   - `evidence.data_timestamp_utc`, `evidence.measured_metrics` (at least volume + delay/queue proxy)
   - `constraints_evaluated.binding_constraints` (at least IDs + type)
   - `uncertainty.data_freshness_s`, `uncertainty.sensor_health_overall`
-  - Storage class tagged for at least **5–7 years** retention for safety-related actions (aligned with typical public-sector audit guidance on incident logs, e.g. [NIST SP 800-92](https://csrc.nist.gov/publications/detail/sp/800-92/final)).
+  - Storage class tagged for at least **5–7 years** retention for safety-related actions (aligned with typical public-sector audit guidance on incident logs, e.g. [NIST SP 800-92](https://csrc.nist.gov/publications/detail/sp/800-92/final:1)).
 
 - **Tier 2 – Model-Driven & Counterfactual (for optimization / AI use cases)**
   - Tier 1, plus when a model or twin is used:
   - `predictions_and_deltas.kpi` (before/after for key KPIs such as delay, queues, transit travel time)
   - `model_confidence_level`, `model_error_bounds` when available
-  - `counterfactual_baseline` and `counterfactual_caveats` when counterfactuals are shown to operators or the public (to avoid over-claiming causality, consistent with risk management guidance in the [NIST AI RMF](https://doi.org/10.6028/NIST.AI.100-1)).
+  - `counterfactual_baseline` and `counterfactual_caveats` when counterfactuals are shown to operators or the public (to avoid over-claiming causality, consistent with risk management guidance in the [NIST AI RMF](https://doi.org/10.6028/NIST.AI.100-1:1)).
 
 - **Tier 3 – Deep Forensics (optional, often retained shorter)**
   - Pointers to richer artifacts (e.g., `model_inputs_reference`, anonymized raw trace data, scenario files) stored in a separate, access-controlled bucket.
@@ -277,7 +310,7 @@ To keep the system vendor-neutral and portable:
 
 ## Logging Strategy for High-Frequency Micro-Adjustments
 
-Modern adaptive systems can generate thousands of sub-second or per-cycle micro-adjustments. Log everything naively and operators drown; log too little and audits fail. Public-sector logging guidance (e.g., [NIST SP 800-92](https://csrc.nist.gov/publications/detail/sp/800-92/final) and control families such as AU-* in [NIST SP 800-53](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final)) emphasize **risk-based selection, aggregation, and retention** of logs. This section applies those ideas to signal timing.
+Modern adaptive systems can generate thousands of sub-second or per-cycle micro-adjustments. Log everything naively and operators drown; log too little and audits fail. Public-sector logging guidance (e.g., [NIST SP 800-92](https://csrc.nist.gov/publications/detail/sp/800-92/final:1) and control families such as AU-* in [NIST SP 800-53](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final:1)) emphasize **risk-based selection, aggregation, and retention** of logs. This section applies those ideas to signal timing.
 
 ### Event-Based vs Sampled vs Aggregated Logging
 
@@ -292,7 +325,7 @@ Modern adaptive systems can generate thousands of sub-second or per-cycle micro-
   - every *k*th event (e.g., every 10th cycle), or
   - at most once per time window per movement (e.g., 1/30s per phase) when conditions are stable.
 - Ensure that sampling is:
-  - **documented and deterministic**,
+  - **documented and deterministic**, 
   - visible in metadata (e.g., `sampling_strategy: every_10th_decision`).
 
 **3. Aggregated logging (episodes and rollups)**
@@ -302,7 +335,7 @@ Modern adaptive systems can generate thousands of sub-second or per-cycle micro-
   - episode start/end times;
   - count of micro-decisions;
   - dominant reason codes;
-  - summary metrics (mean/max queue length, delay, priority granted); 
+  - summary metrics (mean/max queue length, delay, priority granted);
   - counts of oscillations, overrides, and constraint bindings.
 
 ### Decision Episode Schema (Rollup Example)
@@ -353,7 +386,7 @@ Modern adaptive systems can generate thousands of sub-second or per-cycle micro-
 
 ### Alerting and Triage Design
 
-To avoid alarm fatigue, alerts should focus on **anomalies and constraint-related issues** rather than every micro-change. This aligns with general security logging guidance that emphasizes high-value events and anomaly detection over volume ([NIST SP 800-92](https://csrc.nist.gov/publications/detail/sp/800-92/final)).
+To avoid alarm fatigue, alerts should focus on **anomalies and constraint-related issues** rather than every micro-change. This aligns with general security logging guidance that emphasizes high-value events and anomaly detection over volume ([NIST SP 800-92](https://csrc.nist.gov/publications/detail/sp/800-92/final:1)).
 
 Alert categories:
 - **Integrity / configuration anomalies**
@@ -396,9 +429,102 @@ Alert categories:
 
 ---
 
+## Required visual: Decision → Log → Review pipeline
+
+### Diagram: “Decision → reason code → evidence capture → log store → dashboards → review/export” (with integrity controls)
+
+```text
+   [ FIELD & ENGINES ]
+   (controllers, ATMS,
+    twins, priority logic)
+           |
+           | 1) Decision made
+           v
+   [ DECISION ENGINE ]
+   - chooses action
+   - evaluates constraints
+           |
+           | 2) Attach explanation
+           v
+   [ REASON CODE +
+     EVIDENCE CAPTURE ]
+   - apply canonical
+     taxonomy
+   - assemble
+     evidence +
+     uncertainty
+   - assign severity
+           |
+           | 3) Serialize record
+           v
+   [ LOG PIPELINE ]
+   - validate schema
+   - enrich with hash
+     (prev → current)
+   - append-only write
+           |
+           | 4) Store
+           v
+   [ LOG STORE ]
+   - WORM / immutable
+     class for Tier A
+   - hash-chain index
+   - RBAC on access
+           |
+   +-------+-----------------------------+
+   |       |                             |
+   |       | 5a) Operator views          | 5b) Audit / export
+   v       v                             v
+[ DASHBOARDS / UI ]             [ EXPORT & RECORDS ]
+- 10s summary                   - controlled export
+- triage views                    interface
+- drill-down into               - redaction templates
+  decision / episode            - export hashes stored
+
+Integrity controls shown:
+- schema validation at ingestion.
+- hash chaining for batches.
+- WORM/immutable storage for critical tiers.
+- RBAC + access logging for UI and exports.
+```
+
+---
+
+## Reason Code Taxonomy & Required-Evidence Table (required visual)
+
+A **city-owned taxonomy** links each high-level reason to a minimum evidence set, severity, operator action, and retention tier. Codes are grouped (100x safety, 200x efficiency, 300x faults, 400x policy/compliance, 500x operator/manual, etc.).
+
+### Example reason-code slices
+
+| Reason code | Example label | Category |
+|------------:|---------------|----------|
+| 110 | Pedestrian safety / turning conflict mitigation | Safety |
+| 120 | School zone timing change | Safety/Policy |
+| 210 | Through-volume congestion management | Efficiency |
+| 230 | Anti-jam spillback protection | Efficiency/Safety |
+| 310 | Sensor fault / degraded data fallback | Fault |
+| 410 | Policy override (e.g., emergency route protection) | Policy |
+| 510 | Operator manual override (pre-planned) | Human |
+
+### Required visual: reason code → evidence → severity → action → retention tier
+
+| Reason code (class) | Required evidence fields (minimum) | Severity (default) | Default operator action / SOP hook | Retention tier (suggested) |
+|---|---|---|---|---|
+| **110 – Pedestrian safety / turning conflict mitigation** | Tier 1 fields **plus**: ped volumes; recent conflict/safety indicators (if available); list of binding safety constraints (e.g., ped_min_green, max_walk_gap); note if school zone or vulnerable-user flag active | High | Verify no constraint violations; if frequent, escalate to engineering for geometry/plan review; include in safety-focused weekly review | Tier A (7–10 years) |
+| **120 – School zone timing change** | All Tier 1 fields; school schedule reference or flag; affected approaches; applicable policy ID | High | Confirm timing change aligns with schedule; ensure any manual changes documented; highlight in daily summary during school term | Tier A (7–10 years) |
+| **210 – Through-volume congestion management** | Tier 1 + basic queues/volumes; note of any binding efficiency constraints; if model-driven, include delay/queue `predictions_and_deltas` | Medium | Monitor for oscillation or excessive delay to side streets; if recurring issues, tune thresholds or plans; include in corridor KPI review | Tier B (3–5 years) |
+| **230 – Anti-jam spillback protection** | Evidence of queue lengths near boundaries; binding constraint `queue_spillback_protection`; any affected ramps/critical links; uncertainty fields populated | High | Follow anti-jam SOP (see [`ideas/15-anti-jam-nudges.md`](ideas/15-anti-jam-nudges.md:1)); monitor adjacent links for secondary impacts; include in safety/network review | Tier A (7–10 years) |
+| **310 – Sensor fault / degraded data fallback** | `uncertainty.sensor_health_overall` = degraded/bad; `data_quality_flags`; description of fallback plan; maintenance ticket/link if available | Medium | Execute sensor-fault SOP: downgrade automation, open maintenance ticket, document duration; include in ops weekly review | Tier B (3–5 years) for decision, Tier C (≤1 year) for deep traces |
+| **410 – Policy override / emergency routing** | ID of policy or emergency plan invoked; affected network segments; operator ID and note; any deviations from standard plan | High/Critical | Notify supervisor; document reason and duration; ensure logs are complete for incident reconstruction; may trigger dedicated incident report | Tier A (7–10 years) |
+| **510 – Manual operator override (pre-planned)** | Operator ID; override scope; original recommendation vs chosen action; brief note; start/end timestamps | Medium | Review override frequency in weekly governance; if recurring at same site/reason, re-evaluate automation logic or policies | Tier B (3–5 years) |
+
+Cities can extend this table with local codes but should keep the **columns and required-evidence discipline**.
+
+---
+
 ## Security & Integrity: Tamper-Evident, Access-Controlled Logs
 
-Explainability logs are sensitive: they describe operational behavior, model decisions, and sometimes system weaknesses. Security guidance for audit logs (e.g., [NIST SP 800-92](https://csrc.nist.gov/publications/detail/sp/800-92/final) and AU-* controls in [NIST SP 800-53](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final)) highlight **integrity, availability, confidentiality, and auditability of access** as key properties.
+Explainability logs are sensitive: they describe operational behavior, model decisions, and sometimes system weaknesses. Security guidance for audit logs (e.g., [NIST SP 800-92](https://csrc.nist.gov/publications/detail/sp/800-92/final:1) and AU-* controls in [NIST SP 800-53](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final:1)) highlight **integrity, availability, confidentiality, and auditability of access** as key properties.
 
 ### Threat Model for Explainability Logs
 
@@ -434,7 +560,7 @@ You do not need blockchain to achieve strong integrity. Use patterns that are co
 
 ### Access Control and Audit of Access
 
-General public-sector guidance on access control (RBAC, least privilege, separation of duties) applies directly here (see AC-* and AU-* controls in [NIST SP 800-53](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final)).
+General public-sector guidance on access control (RBAC, least privilege, separation of duties) applies directly here (see AC-* and AU-* controls in [NIST SP 800-53](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final:1)).
 
 - **Role-based access control (RBAC)**
   - Define roles like: Operator, Supervisor, Engineer, Security Auditor, External Auditor.
@@ -480,7 +606,7 @@ Record verification outcomes as dedicated log entries in an **integrity audit st
 
 ## Uncertainty & Causal Validity of Counterfactual Explanations
 
-Explainable signals should be honest about what they know and what they do not. The [NIST AI RMF](https://doi.org/10.6028/NIST.AI.100-1) and interpretability guidance emphasize avoiding overstatement of model capabilities and being explicit about limitations. Counterfactuals (“if we had done X instead…”) are especially prone to over-claiming causality.
+Explainable signals should be honest about what they know and what they do not. The [NIST AI RMF](https://doi.org/10.6028/NIST.AI.100-1:1) and interpretability guidance emphasize avoiding overstatement of model capabilities and being explicit about limitations. Counterfactuals (“if we had done X instead…”) are especially prone to over-claiming causality.
 
 ### Expressing Confidence in Explanations
 
@@ -655,7 +781,7 @@ State and municipal records schedules commonly distinguish **short-term operatio
   - Include: raw detector traces, high-frequency model I/O snapshots.
   - Recommended retention: **90 days – 1 year**, unless connected to an incident or legal hold.
 
-Document these tiers in your official records schedule and cross-reference with overarching guidance (e.g., state general records schedules and [NIST SP 800-92](https://csrc.nist.gov/publications/detail/sp/800-92/final) for log lifecycle management).
+Document these tiers in your official records schedule and cross-reference with overarching guidance (e.g., state general records schedules and [NIST SP 800-92](https://csrc.nist.gov/publications/detail/sp/800-92/final:1) for log lifecycle management).
 
 ### Public Records Request (FOIA / Access to Information) Process
 
@@ -727,7 +853,7 @@ Use this as an onboarding and delivery checklist for teams implementing explaina
 
 ---
 
-## Operations Runbook (SOP)
+## Operations SOP (Runbook)
 
 This runbook is aimed at operators and supervisors.
 
@@ -814,10 +940,10 @@ This runbook is aimed at security, IT, and records management staff.
 
 These references informed the patterns above and provide additional detail on risk management, logging, and governance:
 
-- [NIST AI Risk Management Framework (AI RMF 1.0)](https://doi.org/10.6028/NIST.AI.100-1)
-- [NIST AI RMF Playbook](https://airc.nist.gov/docs/AI_RMF_Playbook.pdf)
-- [NIST SP 800-92, Guide to Computer Security Log Management](https://csrc.nist.gov/publications/detail/sp/800-92/final)
-- [NIST SP 800-53 Rev. 5, Security and Privacy Controls for Information Systems and Organizations](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final) (see AU-* and AC-* control families for audit and access control)
+- NIST AI Risk Management Framework (AI RMF 1.0): https://doi.org/10.6028/NIST.AI.100-1
+- NIST AI RMF Playbook: https://airc.nist.gov/docs/AI_RMF_Playbook.pdf
+- NIST SP 800-92, Guide to Computer Security Log Management: https://csrc.nist.gov/publications/detail/sp/800-92/final
+- NIST SP 800-53 Rev. 5, Security and Privacy Controls for Information Systems and Organizations (AU-* and AC-* controls): https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
 - Representative state/local records retention schedules for transportation and operational logs (varies by jurisdiction; check your state archives or municipal records office).
 
 ---
@@ -826,24 +952,28 @@ These references informed the patterns above and provide additional detail on ri
 
 Status legend: ✅ satisfied, ⚠️ partially satisfied or needs local tailoring.
 
-- ✅ **Canonical evidence schema + portability strategy**
-  - See **"Canonical Evidence Schema & Portability Strategy"** and JSON examples above.
+- ✅ **Canonical city-owned taxonomy + evidence schema with vendor adapters**
+  - See **"Canonical Evidence Schema & Portability Strategy"**, JSON and YAML examples, and the reason-code table.
 
-- ✅ **Logging strategy for high-frequency micro-adjustments**
+- ✅ **Logging for high-frequency adjustments (event vs sampled vs aggregated, episodes, thresholds)**
   - See **"Logging Strategy for High-Frequency Micro-Adjustments"** and decision episode schema.
 
-- ✅ **Security and integrity: tamper-evident, access-controlled logs**
-  - See **"Security & Integrity: Tamper-Evident, Access-Controlled Logs"** and the **Security & Records Retention Runbook**.
+- ✅ **Security/integrity: tamper-evident logs, RBAC, access/exports audit, verification cadence**
+  - See **"Security & Integrity: Tamper-Evident, Access-Controlled Logs"** and **"Security & Records Retention Runbook"**.
 
-- ✅ **Uncertainty + causal validity of counterfactual explanations**
-  - See **"Uncertainty & Causal Validity of Counterfactual Explanations"** and required fields.
+- ✅ **Uncertainty + causal validity (confidence, ranges, caveats, model-unreliable state)**
+  - See **"Uncertainty & Causal Validity of Counterfactual Explanations"**.
 
-- ✅ **Operator cognitive load: UI patterns and SOP for triage**
-  - See **"Operator Cognitive Load: UI Patterns and SOP for Triage"** and **Operations Runbook (SOP)**.
+- ✅ **Operator cognitive load (10-second summary, triage/severity, grouping, handover, SOPs)**
+  - See **"Operator Cognitive Load: UI Patterns and SOP for Triage"** and **"Operations SOP (Runbook)"**.
 
-- ✅ **Public transparency boundary + records retention policy**
-  - See **"Public Transparency Boundary & Records Retention Policy"** and **Security & Records Retention Runbook**.
+- ✅ **Public transparency + records retention (public vs internal, tiers, requests, exports)**
+  - See **"Public Transparency Boundary & Records Retention Policy"** and **"Security & Records Retention Runbook"**.
+
+- ✅ **Required visuals**
+  - Decision → reason code → evidence capture → log store → dashboards → review/export pipeline: see **"Required visual: Decision → Log → Review pipeline"**.
+  - Reason-code table (reason code → required evidence fields → severity → operator action → retention tier): see **"Reason Code Taxonomy & Required-Evidence Table"**.
 
 ---
 
-Cross-links: Related ideas include operator option menu, what-if button, and self-healing intersections.
+Cross-links: Related ideas include [`ideas/03-real-time-what-if-button.md`](ideas/03-real-time-what-if-button.md:1), [`ideas/08-operator-option-menu.md`](ideas/08-operator-option-menu.md:1), [`ideas/16-fast-forward-twin-next-5-minutes.md`](ideas/16-fast-forward-twin-next-5-minutes.md:1), and [`ideas/19-crowd-smart-crossings.md`](ideas/19-crowd-smart-crossings.md:1).

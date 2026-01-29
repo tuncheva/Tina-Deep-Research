@@ -172,6 +172,26 @@ Every recommendation/activation should generate an “evidence packet”:
 - proposed mode + rationale + expected tradeoffs
 - operator action (confirm/deny) and reason code
 
+### 3.5 Trigger specification template (required visual)
+
+Use a structured trigger specification so each compound trigger can be reviewed, versioned, and audited.
+
+```markdown
+| Field | Description | Example |
+|---|---|---|
+| Trigger ID | Stable identifier for the trigger bundle | STORM_SAFE_WINTER_01 |
+| Name | Human-readable trigger name | "Winter storm warning – corridor storm-safe activation" |
+| Scope | Network scope affected | Corridor X (MP 0.0–7.5); sites A–M |
+| Trusted signals | Inputs and their sources | WeatherSeverity (NWS WSW); RWIS visibility; TrafficStress (TTI & queue proxy); PowerCommsStatus (UPS + heartbeat) |
+| Enter condition | Boolean condition to enter mode (including dwell) | WeatherSeverity ≥ 2 for ≥ 10 min AND (TrafficStress ≥ 1 OR forecast horizon < 6h) AND PowerCommsStatus ≤ 2 |
+| Exit condition | Boolean condition to leave mode | WeatherSeverity ≤ 1 for 60 min AND TrafficStress ≤ 1 for 30 min AND PowerCommsStatus = 0 for 30 min |
+| Hysteresis & persistence | Dwell times, cooldown, exit votes | Min time-in-mode 30 min; 10 min cooldown; 2 independent exit votes (NWS + RWIS) |
+| Granularity | Spatial and temporal granularity of evaluation | Evaluate every 5 min per corridor; roll up to regional view for comms |
+| Safety invariants | Invariants that must hold if trigger fires | No reduction in ped minimums; no untested plans; max 1 plan change per 20 min |
+| Logging fields | Required evidence in logs | All input values, evaluation result, operator decision, reason code, plan IDs before/after |
+| Versioning | How this trigger spec is versioned and retired | v1.0 pilot; v1.1 after first season AAR; retired when replaced by v2.0 |
+```
+
 ---
 
 ## 4) Storm Policy Contract (what changes; what never changes)
@@ -370,33 +390,57 @@ The agency should run planned drills (tabletop and controlled “game day” exe
 - **Audit log**: evidence packets + operator decisions.
 - **Dashboards**: operator views by corridor and site.
 
-### 9.2 State diagram (implementation-ready)
-Use this as the canonical switching diagram.
+### 9.2 State diagram (required visual: Normal → Storm → Power-constrained → Comms-loss → Recovery)
 
-```mermaid
-stateDiagram-v2
-  [*] --> NORMAL
+This is the canonical storm/outage state diagram. It abstracts to the five states the program must support, while still mapping to the internal mode library.
 
-  NORMAL --> STORM_SAFE: WeatherSeverity>=2 (dwell)
-  NORMAL --> TRAFFIC_SURGE: TrafficStress>=2 (dwell)
-  NORMAL --> POWER_SAVE: PowerCommsStatus==1 (dwell)
-
-  STORM_SAFE --> POWER_SAVE: PowerCommsStatus>=1
-  STORM_SAFE --> OUTAGE_LOCAL: PowerCommsStatus>=3
-
-  TRAFFIC_SURGE --> STORM_SAFE: WeatherSeverity>=2
-  TRAFFIC_SURGE --> POWER_SAVE: PowerCommsStatus>=1
-
-  POWER_SAVE --> OUTAGE_LOCAL: PowerCommsStatus>=3
-  POWER_SAVE --> RECOVERY: All exit criteria met
-
-  OUTAGE_LOCAL --> RECOVERY: Comms restored + stable power
-
-  STORM_SAFE --> RECOVERY: WeatherSeverity<=1 (dwell)
-  TRAFFIC_SURGE --> RECOVERY: TrafficStress<=1 (dwell)
-
-  RECOVERY --> NORMAL: Stable KPIs + operator approval
+```text
+            [ NORMAL ]
+                |
+     (Storm trigger: WeatherSeverity ≥ 2,
+      TrafficStress ≥ 1, power/comms OK,
+      dwell satisfied)
+                v
+          [ STORM MODE ]
+        (e.g., STORM-SAFE,
+         EVACUATION BIAS overlay)
+                |
+     (PowerCommsStatus ≥ 1,
+      UPS on battery or comms
+      significantly degraded)
+                v
+ [ POWER-CONSTRAINED MODE ]
+    (e.g., POWER-SAVE /
+     COMMS-DEGRADED)
+                |
+     (Loss of comms and/or
+      mains power beyond
+      thresholds)
+                v
+    [ COMMS-LOSS / OUTAGE ]
+      (OUTAGE / ISOLATED LOCAL;
+       local plans and MMU dominate)
+                |
+     (Exit criteria satisfied:
+      hazards cleared, power and
+      comms stable for dwell
+      intervals, KPIs within
+      bounds, operator approval)
+                v
+           [ RECOVERY ]
+                |
+     (Stability verified and
+      operator closes event)
+                v
+            [ NORMAL ]
 ```
+
+Map to concrete modes:
+- **NORMAL** → existing operations.
+- **STORM MODE** → STORM-SAFE (plus optional EVACUATION BIAS, if requested).
+- **POWER-CONSTRAINED MODE** → POWER-SAVE / COMMS-DEGRADED.
+- **COMMS-LOSS / OUTAGE** → OUTAGE / ISOLATED LOCAL (controller-only, MMU-governed behavior).
+- **RECOVERY** → RECOVERY plans that step back toward NORMAL with dwell and monitoring.
 
 ### 9.3 Integration notes (field realities)
 - Plan pushes must be **idempotent** and tolerate partial failure.

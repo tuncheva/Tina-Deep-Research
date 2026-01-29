@@ -324,6 +324,42 @@ The table below is “deployable” because it is explicit about inputs, methods
 
 ---
 
+### 7) Calibration lifecycle diagram (instrument → estimate → shadow → rollout → monitor)
+
+This is the **end-to-end calibration lifecycle chart** for adapting to local driving style, showing how measurement, estimation, validation, rollout, and monitoring connect.
+
+```text
+[1] Instrument & Data Quality Gates
+      - Detector inventory + placement
+      - Time sync checks
+      - Data-quality budgets (missingness, health, stability)
+      ↓
+[2] Estimate Parameters (per movement / context)
+      - Start-up lost time, saturation flow, heavy-vehicle factors
+      - Regime separation (normal vs blocked)
+      - Confidence scores + freeze rules
+      ↓
+[3] Shadow Validation in Twin
+      - Inject parameters into digital twin
+      - Reproduce queues, split failures, arrivals-on-green
+      - Safety & equity checks (Section 1 & 2)
+      ↓
+[4] Governed Rollout (Pilot → Corridor)
+      - Limited pilot deployment with cooldown windows
+      - Versioned parameter sets (vMAJOR.MINOR.PATCH)
+      - Approval workflow + equity review
+      ↓
+[5] Monitor, Drift Detection & Recertification
+      - ATSPM-style KPIs + safety proxies
+      - Drift + data-quality gates; rollback triggers
+      - Periodic recertification & scope expansion
+      ↺  Feeds back into [1] Instrument & Gates
+```
+
+This diagram is the **calibration chart** for Idea 05 and should be treated as the reference lifecycle for any implementation.
+
+---
+
 ## MVP Deployment
 - 3–5 intersections.
 - Weekly parameter estimates.

@@ -302,27 +302,32 @@ Expand from 1 intersection → 2–3 intersections when:
 - Queue is spanning blocks and threatens to back through an upstream intersection.
 - The downstream bottleneck is the true constraint (local extra green cannot create storage).
 
-### 4.2 Pattern: upstream metering to protect a downstream bottleneck
-Objective: **queue management** — keep queues in locations with safe storage; prevent spillback through upstream intersections.
+### 4.2 Required visual: bottleneck + upstream metering + boundary constraints diagram
 
-ASCII example (corridor A→B→C; bottleneck at C):
+Diagram the control region so it is clear where you meter, where you flush, and where **boundaries** must not be crossed.
 
 ```text
-Upstream          Mid-block           Downstream bottleneck
+        Upstream             Mid-block              Downstream bottleneck
 
- [A] -----(link1)---- [B] -----(link2)---- [C]
-  |                   |                    |
-  | meter here         | optional meter     | flush here (if storage exists)
-  v                   v                    v
-Protected side street nearby at A (do NOT spill into it)
+      [A] --------(link1)-------- [B] --------(link2)-------- [C]
+       |                           |                           |
+       |  Meter here               |  Optional meter           |  Flush here (if storage exists)
+       v                           v                           v
+   [Protected side street]     [Local street]           [Downstream link]
+       ^                           ^
+       |                           |
+   BOUNDARY: do not           BOUNDARY: do not
+   push queues into           block crosswalk /
+   residential zone           bus stop zone
 ```
 
-Implementation notes:
-- Start with **C**: if C is blocked, “flushing” C’s discharge may not help; first confirm downstream can accept flow.
-- If C has limited discharge, meter at **B** to keep link2 from filling.
-- If link2 is still filling, meter at **A** *but only if protected side streets are not harmed*.
+Key concepts in the diagram:
+- **[C]** is the **bottleneck** (e.g., bridge, ramp, lane drop).
+- **[B]** and **[A]** are upstream signals where you may meter.
+- **BOUNDARY** callouts mark **equity/displacement guardrails** (school, neighborhood, bus corridor).
+- Metering must not push queues past these boundaries; if queues approach them, you must scale back metering and/or change strategy.
 
-This follows the “work back from downstream bottleneck” and “meter traffic into bottlenecks” patterns cited by practitioners in saturated conditions guidance ([`FHWA “Signal Timing Under Saturated Conditions” (Guidance)`](https://ops.fhwa.dot.gov/publications/fhwahop09008/guidance.htm); [`FHWA “Signal Timing Under Saturated Conditions” (Ch. 2)`](https://ops.fhwa.dot.gov/publications/fhwahop09008/chapter2.htm)).
+This visual directly ties jam control to both **coordination** and **equity guardrails**.
 
 ### 4.3 Boundary constraints so queues don’t spill into protected areas
 For each metering intersection, declare:
@@ -339,7 +344,26 @@ If a queue approaches the boundary → reduce metering (or shift metering upstre
   2. Ramp splits back toward baseline (e.g., 50% of Δ per cycle).
   3. Re-enable normal plan transitions.
 
-Plan transitions can destabilize close intersections; practice examples include programming plan changes to avoid problematic transitions at critical intersections ([`FHWA “Signal Timing Under Saturated Conditions” (Ch. 2)`](https://ops.fhwa.dot.gov/publications/fhwahop09008/chapter2.htm)).
+Plan transitions can destabilize close intersections; practice examples include programming plan changes to avoid problematic transitions at critical intersections ([`FHWA “Signal Timing Under Saturated Conditions” (Ch. 2)`](https://ops.fhwa.odot.gov/publications/fhwahop09008/chapter2.htm)).
+
+### 4.5 Required visual: jam signature → trigger → nudge → rollback table
+
+Summarize how detected jam signatures map to specific nudges and rollback conditions.
+
+```markdown
+| Jam signature | Trigger conditions (simplified) | Primary nudge actions | Key constraints / guardrails | Rollback criteria |
+|---|---|---|---|---|
+| Oversaturation at critical movement | Split failures (GOR & ROR5 high) for ≥ N cycles; residual queue growing; risk_score ≥ 70 | FLUSH downstream by +3–6s on critical movement; HOLD coordination for 2–3 cycles | Ped hard mins; max added cycle length; equity budget for impacted side streets | risk_score < 40 for 3 cycles **OR** protected-asset queue > Q_protect_warn; then ramp splits back and release hold |
+| Downstream bottleneck / storage collapse | Downstream detector occupancy high; low discharge; queue near downstream stopline; risk_score ≥ 75 | METER upstream at B (−3–6s on feeder), optional meter at A; HOLD coordination | Do not exceed A’s queue boundary into protected side street; transit corridor excluded from metering during headway recovery | risk_score < 40 for 3 cycles **OR** A/B boundary queues exceed Q_protect_stop; then restore splits and log boundary breach |
+| Blocking-the-box at intersection | Detector/CCTV shows blocking-the-box events ≥ K per 15 min; queues across intersection line | SHORTEN upstream approaches that feed blockage; ADJUST offsets to create clearance; increase all-red if policy allows | Maintain ped crossing safety; don’t starve conflicting approaches beyond delay caps; respect equity budgets | Blocked-box rate < threshold for 30 min; complaints in protected zone; then roll back to baseline and review plan |
+| Incident / lane drop upstream | Sudden speed collapse on link; detector volume drop; incident feed confirms event | METER inflow from parallel routes; FLUSH alternate routes; possibly ENABLE special incident plan | Don’t overflow alternate routes into equity-priority neighborhoods; keep bus corridors viable; maintain ped service | Incident cleared; travel times normalize; alternates see growing harm; then revert to normal or pre-incident plan, per playbook |
+```
+
+This table is the **operational bridge** between:
+- **Jam signatures** (how we detect problems),
+- **Triggers** (when we act),
+- **Nudges** (what we do), and
+- **Rollback** (how we safely stop).
 
 ## 5) Implementation artifacts: playbook, action vocabulary, acceptance criteria
 
@@ -392,12 +416,14 @@ playbook_entry:
 
 ### 5.2 Action vocabulary table
 
+```markdown
 | Action | Preconditions | Max magnitude | Duration / cooldown | Risks | Rollback |
 |---|---|---:|---|---|---|
 | Flush downstream (add green) | Downstream can discharge; storage exists to clear | +3–8s split, bounded | 1–5 cycles; cooldown 5–10 cycles | Starves side streets/peds; longer cycle | revert split; exit after N cycles; enforce ped mins |
 | Meter upstream inflow | Confirm downstream bottleneck; protect boundaries | −3–8s split (or reduce max) | 2–10 cycles; cooldown 5–20 cycles | Queue displacement into neighborhoods | stop if protected thresholds triggered; ramp back |
 | Hold coordination / freeze transitions | Plan transition thrash risk; close intersections | no plan switch; limited split change | 2–10 cycles | Blocks beneficial transitions / TSP | release hold; staged recovery |
 | Phase reservice / double-serve major movement (if supported) | Movement imbalance; minor movements can be served less frequently | site-specific | bounded window | Confusing to maintain if esoteric | disable reservice; restore normal phasing |
+```
 
 Phase reservice and “serve heavy movements more than once in a cycle” are repeatedly cited as effective in saturated conditions and queue management contexts ([`FHWA “Signal Timing Under Saturated Conditions” (Guidance)`](https://ops.fhwa.dot.gov/publications/fhwahop09008/guidance.htm); [`FHWA “Signal Timing Under Saturated Conditions” (Ch. 2)`](https://ops.fhwa.dot.gov/publications/fhwahop09008/chapter2.htm)).
 
@@ -429,9 +455,9 @@ Guidance recommends proactive monitoring programs and before/after evaluation to
 ## Technical Mechanics
 
 ### Key Parameters
-- Spillback probability / risk score
-- Split shift bounds
-- Dwell times and recovery thresholds
+- Spillback probability / risk score.
+- Split shift bounds.
+- Dwell times and recovery thresholds.
 
 ### Guardrails
 - Never violate pedestrian service and clearance behavior.
@@ -448,7 +474,7 @@ Guidance recommends proactive monitoring programs and before/after evaluation to
 - Travel time reliability during peaks/incidents.
 - Unintended queue displacement.
 
-During oversaturated conditions, relevant performance measures include queue lengths, number of cycle failures, and percent time congested; the objective is to minimize oversaturation duration and manage spillback between intersections ([`FHWA “Traffic Signal Timing Manual” Ch. 7`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm)).
+During oversaturated conditions, relevant performance measures include queue lengths, number of cycle failures, and percent time congested; the objective is to minimize oversaturation duration and manage spillback between intersections ([`FHWA “Traffic Signal Timing Manual” Ch. 7`](https://ops.fhwa.odot.gov/publications/fhwahop08024/chapter7.htm)).
 
 ---
 
@@ -468,7 +494,7 @@ During oversaturated conditions, relevant performance measures include queue len
 ## Operations Runbook (SOP)
 ### A. Normal monitoring
 1. Review daily watchdog / detection health so triggers are not driven by bad sensors ([`FHWA ATSPM Use Cases` (Watchdog)](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
-2. Review daily top split-failure locations (GOR/ROR5) to identify oversaturation hotspots ([`FHWA ATSPM Use Cases` (Split Failure)](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+2. Review daily top split-failure locations (GOR/ROR5) to identify oversaturation hotspots ([`FHWA ATSPM Use Cases` (Split Failure)](https://ops.fhwa.odot.gov/publications/fhwahop20002/ch4.htm)).
 
 ### B. Assisted nudge activation (operator-confirm)
 1. Open the nudge option card.
@@ -516,7 +542,7 @@ During oversaturated conditions, relevant performance measures include queue len
   - reason
   - expected impact
   - rollback plan
-  - before/after evaluation plan ([`FHWA “Traffic Signal Timing Manual” Ch. 7`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm))
+  - before/after evaluation plan ([`FHWA “Traffic Signal Timing Manual” Ch. 7`](https://ops.fhwa.odot.gov/publications/fhwahop08024/chapter7.htm))
 
 ## Reference Links
 - [`FHWA “Signal Timing Under Saturated Conditions” (Guidance)`](https://ops.fhwa.dot.gov/publications/fhwahop09008/guidance.htm)
@@ -529,8 +555,8 @@ During oversaturated conditions, relevant performance measures include queue len
 - ✅ Equity/displacement governance made measurable (see **“1) Equity / displacement governance”**).
 - ✅ Spillback-risk inference with multi-signal confirmation + confidence scoring + signature library + false-alarm plan (see **“2) Reliable spillback-risk inference”**).
 - ✅ Multimodal ped/transit treated as binders with KPIs and mitigation guidance (see **“3) Multimodal constraints”**).
-- ✅ Multi-intersection coordination patterns + recovery rules + ASCII diagram (see **“4) Multi-intersection coordination patterns”**).
-- ✅ Implementation artifacts: playbook template, action vocabulary table, shadow-mode acceptance criteria + rollout phases (see **“5) Implementation artifacts”**).
+- ✅ Multi-intersection coordination patterns + **required bottleneck/upstream-metering/boundary diagram** and coordination limits (see **“4.2–4.4”**).
+- ✅ Required **jam signature → trigger → nudge → rollback table** plus YAML playbook template and action vocabulary table (see **“4.5”** and **“5) Implementation artifacts”**).
 - ✅ Final sections added: **Implementation Checklist**, **Operations Runbook (SOP)**, **Governance & Equity Guardrails Runbook**, **Reference Links**, **Completion Checklist**.
 
 ---

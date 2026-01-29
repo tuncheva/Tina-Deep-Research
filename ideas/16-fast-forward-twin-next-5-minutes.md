@@ -11,27 +11,27 @@ A **fast-forward twin** is a short-horizon model-predictive control (MPC) loop u
 4) selects an action within hard constraints,
 5) applies it with rollback protections.
 
-It differs from a one-off what-if tool by being a **continuous control loop** with runtime SLAs, strict action bounds, and explicit safety envelopes.
+It differs from a one-off what-if tool by being a **continuous control loop** with runtime SLAs, strict action bounds, explicit safety envelopes, and full auditability.
 
 ## Benefits
 - **High responsiveness**: adapts to near-term demand shifts.
 - **Constraint-aware**: selects actions that respect safety and policy invariants.
 - **Stability control**: can reduce spillback cascades with early interventions.
-- **Auditability**: logs evaluated rollouts and selected action.
+- **Auditability**: logs evaluated rollouts and selected actions for replay.
 
 ## Challenges
 - **Compute + latency**: must run fast enough every cycle/window.
 - **State estimation**: twin initialization errors compound quickly.
 - **Overfitting to the horizon**: myopic optimization can harm longer-term flow.
-- **Operational risk**: requires strong rollback and supervision.
+- **Operational risk**: requires strong rollback, partitioning rules, and supervision.
 
 ---
 
-## Operating model (control loop + layers)
+## 0) Operating model (control loop + layers)
 
 ### Control layers
-- **Controller layer (safety execution):** runs the actual signal safety-critical logic (conflicts, min greens, clearance, pedestrian timing). The fast-forward twin must not bypass this layer.
-- **Supervisory layer (this idea):** chooses among *bounded* actions (e.g., plan selection, split/offset nudges) and validates feasibility before sending changes.
+- **Controller layer (safety execution):** runs the actual signal safety-critical logic (conflicts, min greens, clearance, pedestrian timing). The fast-forward twin must **never** bypass this layer.
+- **Supervisory layer (this idea):** chooses among *bounded* actions (e.g., plan selection, split/offset nudges, metering templates) and validates feasibility before sending changes.
 - **Observation layer (ATSPM + probes):** continuously measures outcomes and drift from predictions using high-resolution controller logs and probe data.
 
 ### MPC framing (why it works)
@@ -216,10 +216,92 @@ Per replan tick:
   9) Post-check:
        - compare predicted vs observed short-term residuals
        - if residual too high: flag drift; widen uncertainty or SAFE_HOLD
-  10) Log everything (see governance section)
+ 10) Log everything (see governance section)
 ```
 
 Where the “watchdog style checks” can leverage ATSPM-like daily/periodic abnormality detection rules (no data, high max-outs/force-offs, etc.). [FHWA ATSPM Use Cases (Watchdog)](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)
+
+### 3.4 Required visual: MPC loop pipeline diagram
+
+This is the **required diagram** showing the MPC pipeline with where guards and logs occur.
+
+```text
+   ┌───────────────────────────┐
+   │   FIELD & TELEMETRY      │
+   │  - controller events     │
+   │  - detectors & probes    │
+   │  - health / freshness    │
+   └────────────┬─────────────┘
+                │  (1. ingest)
+                v
+   ┌───────────────────────────┐   stale / bad data
+   │ STATE ESTIMATION &        │───────────────┐
+   │ UNCERTAINTY TRACKING      │               │
+   │  - λ, β, queue proxy q    │               │
+   │  - confidence levels      │               │
+   └────────────┬─────────────┘               │
+                │  (2. build state)           │
+                v                              │
+   ┌───────────────────────────┐               │
+   │ CANDIDATE ACTION MENU     │               │
+   │  - baseline               │               │
+   │  - plan/offset/split      │               │
+   │  - templates (meter/flush)│               │
+   └────────────┬─────────────┘               │
+                │  (3. simulate)              │
+                v                              │
+   ┌───────────────────────────┐               │
+   │ FAST-FORWARD TWIN (1–5m)  │               │
+   │  - simulate each action   │               │
+   │  - KPIs + risk penalties  │               │
+   └────────────┬─────────────┘               │
+                │  (4. check)                 │
+                v                              │
+   ┌───────────────────────────┐               │
+   │ CONSTRAINT &              │               │
+   │ DEPLOYABILITY GATE        │               │
+   │  - controller safety mins │               │
+   │  - policy & equity rules  │               │
+   │  - dwell / cooldown       │               │
+   └────────────┬─────────────┘               │
+                │  (5. select)                │
+                v                              │
+   ┌───────────────────────────┐               │
+   │ STABILITY & SELECTION     │               │
+   │  - do-nothing dominance   │               │
+   │  - anti-flip-flop checks  │               │
+   └────────────┬─────────────┘               │
+                │  (6. act)                   │
+                v                              │
+   ┌───────────────────────────┐               │
+   │ CONTROLLER APPLY &        │               │
+   │ ROLLBACK INTERFACE        │               │
+   │  - command & ack          │               │
+   │  - rollback contract      │               │
+   └────────────┬─────────────┘               │
+                │  (7. monitor)               │
+                v                              │
+   ┌───────────────────────────┐               │
+   │ OBSERVATION & DRIFT       │               │
+   │ MONITORING                │               │
+   │  - predicted vs observed  │               │
+   │  - SAFE_HOLD triggers     │◀──────────────┘
+   └───────────────────────────┘
+                │
+                v
+         LOGGING & AUDIT
+       - per-cycle evidence
+       - overrides & reasons
+       - versioned configs
+```
+
+Guards and logs appear explicitly at:
+- **Ingest** (staleness/health checks → SAFE_HOLD).
+- **Deployability gate** (hard constraints, policy, equity guards).
+- **Stability/selection** (dwell, cooldown, flip-flop detection).
+- **Apply/rollback** (command IDs, acks, verify, revert).
+- **Monitoring** (drift residuals, SAFE_HOLD triggers).
+- **Logging & audit** (full evidence bundle for replay).
 
 ---
 
@@ -250,8 +332,6 @@ Separate constraints into three buckets:
 
 ### 4.2 Encode constraints as config
 Use a versioned config structure (YAML/JSON) so it is reviewable and testable.
-
-Example (sketch):
 
 ```yaml
 constraints:
@@ -291,7 +371,7 @@ If a candidate fails any hard constraint → it is infeasible and cannot be sele
 | Ped walk + clearance | ped timing settings; ped calls | Controller | block action; log |
 | Max ped wait (policy) | ped actuation timestamp; walk start timestamp | Supervisory + monitoring (ATSPM) | if predicted/past wait too high: penalize or forbid actions; if observed violations: SAFE_HOLD + alert |
 | Split failure / oversaturation guard | GOR/ROR5, max-outs, occupancy | Supervisory scoring + monitoring | raise spillback risk; limit action magnitude; possibly trigger metering templates |
-| Detector health minimum | watchdog rules (no data, max-outs/force-offs anomalies) | Supervisory | widen uncertainty or SAFE_HOLD | 
+| Detector health minimum | watchdog rules (no data, max-outs/force-offs anomalies) | Supervisory | widen uncertainty or SAFE_HOLD |
 | Plan change dwell time | action history | Supervisory | override to BASELINE |
 
 ATSPM definitions used here include:
@@ -308,10 +388,10 @@ Define SLAs and thresholds:
 - If `runtime > HARD_DEADLINE` on a cycle → drop actuation for that tick (BASELINE) and log.
 
 Fallback ladder:
-1) Full candidate set + robust scoring
-2) Smaller candidate set (template-only)
-3) Plan selection only (no parameter tweaks)
-4) SAFE_HOLD (revert to base plan)
+1) Full candidate set + robust scoring.
+2) Smaller candidate set (template-only).
+3) Plan selection only (no parameter tweaks).
+4) SAFE_HOLD (revert to base plan).
 
 ### 5.2 Comms disruption and partitioning
 Partition rule:
@@ -324,25 +404,25 @@ Behavior:
 
 ### 5.3 Silent wrongness (model divergence)
 Detect drift by comparing predicted vs observed outcomes:
-- residuals for travel time / arrivals on green / occupancy
-- rising split failures despite predicted improvements
+- residuals for travel time / arrivals on green / occupancy.
+- rising split failures despite predicted improvements.
 
 ATSPM provides the kind of objective, repeated measurements (split failures, arrivals on green, termination types) that make drift detection practical. [FHWA ATSPM Use Cases](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)
 
 Policy:
 - If residual exceeds `DRIFT_THRESHOLD` for `K` consecutive windows:
-  - widen uncertainty
-  - reduce action magnitudes
-  - if still high → SAFE_HOLD and alert engineer
+  - widen uncertainty,
+  - reduce action magnitudes,
+  - if still high → SAFE_HOLD and alert engineer.
 
 ### 5.4 Biased data during incidents/weather
 During unusual conditions (incidents, special events, extreme weather), detection reliability and saturation flows can change; traffic-responsive/adaptive operation relies on reliable detectors and may need special plans for unusual conditions. [FHWA Traffic Signal Timing Manual, Ch. 9](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)
 
 Policy:
-- widen uncertainty bounds
-- reduce action magnitudes
-- prefer pre-approved playbook plans (event plans)
-- increase monitoring cadence and operator involvement
+- widen uncertainty bounds,
+- reduce action magnitudes,
+- prefer pre-approved playbook plans (event plans),
+- increase monitoring cadence and operator involvement.
 
 ---
 
@@ -350,86 +430,101 @@ Policy:
 
 ### 6.1 Required logs per decision cycle
 Log every cycle/tick with enough detail to replay decisions:
-- state snapshot identifier (hash)
-- raw input freshness per feed
-- detector health flags (watchdog conditions)
-- estimated state + uncertainty (CI/quantiles)
-- candidate set identifiers + versions
-- constraint check results per candidate (pass/fail + reason)
-- chosen action + expected KPI deltas
-- runtime metrics (wall time, p95/p99 over day)
-- operator override actions (approve/deny/edit) and reason codes
+- state snapshot identifier (hash),
+- raw input freshness per feed,
+- detector health flags (watchdog conditions),
+- estimated state + uncertainty (CI/quantiles),
+- candidate set identifiers + versions,
+- constraint check results per candidate (pass/fail + reason),
+- chosen action + expected KPI deltas,
+- runtime metrics (wall time, p95/p99 over day),
+- operator override actions (approve/deny/edit) and reason codes.
 
 ATSPM practice highlights systematic use of high-resolution logs to identify abnormal activity and support troubleshooting workflows (e.g., watchdog alert categories). [FHWA ATSPM Use Cases (Watchdog)](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)
 
 ### 6.2 Explainability requirements
 Provide two levels:
 - **10-second card:** “Why this action now” with top 3 drivers (e.g., split failures rising, occupancy high, predicted spillback risk) and key constraints respected.
-- **Deep dive:** candidate comparison table and constraint audit.
+- **Deep dive:** candidate comparison table and constraint audit (for engineers and governance bodies).
 
 ### 6.3 Change control
 Version and review:
-- action menu definitions
-- constraint configs
-- scoring weights
-- estimator model versions
-- simulation/surrogate model versions
+- action menu definitions,
+- constraint configs,
+- scoring weights,
+- estimator model versions,
+- simulation/surrogate model versions.
 
 ### 6.4 Ops KPIs (program health)
-- override rate and reasons
-- safety constraint violations (target: zero)
-- stale-feed minutes per corridor
-- runtime p95/p99
-- mode distribution (SHADOW/ASSISTED/AUTO/SAFE_HOLD)
-- benefit vs harm slices (e.g., travel time and reliability; ped delay)
+- override rate and reasons,
+- safety constraint violations (target: zero),
+- stale-feed minutes per corridor,
+- runtime p95/p99,
+- mode distribution (SHADOW/ASSISTED/AUTO/SAFE_HOLD),
+- benefit vs harm slices (e.g., travel time and reliability; ped delay).
 
 ---
 
 ## 7) Implementation artifacts (make it deployable)
 
-### 7.1 Action menu / vocabulary (bounded)
-Keep actions few, reversible, and within pre-tested bounds.
+### 7.1 Required visual: action class table (magnitude, constraints, rollback, latency)
 
-| Action | Typical magnitude bounds | Notes |
-|---|---:|---|
-| Plan selection (TOD/response plan) | from approved plan set | Use hysteresis + dwell (avoid frequent changes). TRPS uses thresholds/hysteresis and can still change too frequently if not tuned. [FHWA Traffic Signal Timing Manual, Ch. 9](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm) |
-| Offset nudge (corridor) | ±2–5 s per step | Rate limit; coordinate group must remain coherent |
-| Split nudge (phase group) | ±1–3 s per cycle or ±5% | Use penalty on Δsplit and dwell |
-| “Hold/force-off” (if supported) | seconds-level bounded | Used by some adaptive systems (e.g., SCOOT/OPAC send holds/force-offs); treat as advanced mode requiring extra safety review. [FHWA Traffic Signal Timing Manual, Ch. 9](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm) |
-| Meter/flush templates | pre-approved templates | Use only where spillback protection is needed; validate with ATSPM |
+This table is the **required visual** linking each action class to bounds, constraints checked, transition/rollback methods, and latency budgets.
 
-### 7.2 Shadow-mode acceptance criteria and rollout gates
+```markdown
+| Action class | Allowed magnitude (typical) | Key constraints checked | Transition / rollback method | Latency budget (end-to-end) |
+|---|---|---|---|---|
+| Plan selection (TOD / response plan) | Switch only among pre-approved plans; max 4 changes/hr; dwell ≥ 10–15 min | Controller safety mins; policy windows (school zones); dwell/cooldown; coordination group consistency | Use controller plan-change mechanism with verified transitions; rollback to previous plan if acks or KPIs fail | ≤ 1–2 replan intervals (e.g., ≤ 60–120 s) to decide and apply safely |
+| Offset nudge (corridor) | ±2–5 s per step; rate limit 1 step per N cycles | Coordination constraints; max offset error vs reference; storage/spillback guards on downstream links | Smooth transition using offset step changes at cycle boundaries; rollback by stepping offsets back toward baseline | ≤ 1 replan interval to compute; must schedule for next cycle boundary (controller-side) |
+| Split nudge (phase group) | ±1–3 s per cycle or ±5% from baseline; cap on total Δ per hr | Min green/yellow/all-red; ped walk + clearance; max ped wait; oversaturation guards | Apply as bounded split changes at cycle start; rollback by ramping Δ toward 0 over several cycles (e.g., 50% per cycle) | Decision within replan interval (e.g., 10–60 s); effect realized over next 1–3 cycles |
+| Template metering / flushing (anti-jam) | Pre-defined templates (e.g., −3–6 s meter, +3–6 s flush) with daily budgets | Equity/boundary caps; protected assets; ped/transit hard constraints; storage limits; dwell/cooldown | Activate template for fixed # cycles; monitor queue/boundary KPIs; rollback by deactivating template and restoring baseline splits | Decision within 1 replan; must adhere to short-term monitoring cadence (e.g., every cycle for N cycles) |
+| Hold / force-off (advanced) | Seconds-level holds within tested ranges; only for vetted movements | Phase compatibility; min green served; preemption/TSP conflicts; safety envelope | Use vendor-supported hold/force-off APIs; limit to rare use; rollback by releasing holds and confirming controller returns to normal sequencing | Very tight budget (sub-cycle): command must arrive before transition deadline; typically requires local/low-latency host |
+```
+
+These rows should be implemented as config (per corridor) so engineering and ops can tune magnitudes, constraints, and latency budgets explicitly.
+
+### 7.2 Action menu / vocabulary (bounded)
+Keep actions few, reversible, and within pre-tested bounds (as table above). Enumerate and version:
+- Plan selection.
+- Offset nudges.
+- Split nudges.
+- Template metering/flush.
+- Holds/force-offs (advanced, optional).
+
+### 7.3 Shadow-mode acceptance criteria and rollout gates
+
 **Shadow mode (recommend-only) acceptance:**
-- runtime SLA met (p95) under expected candidate counts
-- prediction errors within agreed bounds for selected KPIs
-- “deployability gate” rejects infeasible actions correctly
-- stability logic prevents frequent flip-flops
+- runtime SLA met (p95) under expected candidate counts,
+- prediction errors within agreed bounds for selected KPIs,
+- deployability gate rejects infeasible actions correctly,
+- stability logic prevents frequent flip-flops.
 
 **Assisted actuation gate:**
-- operator UX is usable (approve/deny in seconds)
-- rollback works reliably
-- no constraint violations during assisted period
+- operator UX is usable (approve/deny in seconds),
+- rollback works reliably,
+- no constraint violations during assisted period.
 
 **Auto gate:**
-- sustained benefit without excessive overrides
-- drift watchdog stable
+- sustained benefit without excessive overrides,
+- drift watchdog stable.
 
-### 7.3 Test plan
+### 7.4 Test plan (replay/regression)
 - **Offline simulation regression:** compare baseline vs candidate actions across representative days.
 - **Replay tests:** run estimator and decision logic on recorded high-resolution event logs; validate reproducibility.
 - **Field trial checklist:**
-  - confirm detector health monitoring
-  - confirm controller capabilities and rollback
-  - confirm coordination and offset transition behavior
+  - confirm detector health monitoring,
+  - confirm controller capabilities and rollback,
+  - confirm coordination and offset transition behavior.
 
 NCHRP work on performance-based arterial signal management emphasizes using high-resolution event data and cycle-by-cycle measures to support systematic performance measurement and operations improvement. [NCHRP 03-79A Final Report Volume 1](https://onlinepubs.trb.org/onlinepubs/nchrp/docs/NCHRP03-79A_FR-Volume1.pdf)
 
-### 7.4 Interfaces and rollback contract
+### 7.5 Interfaces and rollback contract
+
 **Controller command interface should be explicit about:**
-- command id + version
-- expected resulting state
-- acknowledgement semantics
-- rollback command and timeout
+- command id + version,
+- expected resulting state,
+- acknowledgement semantics,
+- rollback command and timeout.
 
 Minimum contract:
 1) **Push**: send action with id and target state.
@@ -477,17 +572,17 @@ Minimum contract:
 
 ## Governance / Audit Runbook
 - Maintain a change log for:
-  - constraints config
-  - action menu
-  - estimator model
-  - scoring weights
+  - constraints config,
+  - action menu,
+  - estimator model,
+  - scoring weights.
 - Require review/approval for changes (engineering + ops + accessibility).
 - Keep replay artifacts for every deployed version (inputs + decision logs).
 - Audit quarterly:
-  - constraint violations (should be zero)
-  - overrides and reasons
-  - equity/accessibility proxies (e.g., ped delay distribution)
-  - safety proxies (yellow/red actuations trends)
+  - constraint violations (should be zero),
+  - overrides and reasons,
+  - equity/accessibility proxies (e.g., ped delay distribution),
+  - safety proxies (yellow/red actuations trends).
 
 ---
 
@@ -501,14 +596,14 @@ Minimum contract:
 ---
 
 ## Completion Checklist
-- ✅ (1) State estimation methods + observability limits + uncertainty propagation + staleness rules: see **“1) State estimation”**
-- ✅ (2) Scope/network coupling + control vs observation region + resizing rules: see **“2) Scope and network coupling”**
-- ✅ (3) Stability/anti-oscillation controls + pseudocode/state machine: see **“3) Stability”**
-- ✅ (4) Safety + policy constraints as code/config + deployability gate + constraint table: see **“4) Safety + policy constraint formalization”**
-- ✅ (5) Failure modes/safe degradation (compute, latency, comms partitioning, silent wrongness, biased data): see **“5) Failure modes and safe degradation”**
-- ✅ (6) Governance/auditability/operator integration (required logs, explainability card, change control, ops KPIs): see **“6) Governance…”**
-- ✅ (7) Implementation artifacts (action menu table, rollout gates, test plan, interfaces/ack/rollback): see **“7) Implementation artifacts”**
-- ✅ Appended sections: Implementation Checklist, Operations Runbook (SOP), Governance / Audit Runbook, Reference Links, Completion Checklist
+- ✅ (1) State estimation methods + observability limits + uncertainty propagation + staleness rules: see **“1) State estimation”**.
+- ✅ (2) Corridor/subnetwork scope guidance + control vs observation region + coupling/resizing rules: see **“2) Scope and network coupling”**.
+- ✅ (3) Stability/anti-oscillation controls (dwell, hysteresis, cooldown, change penalties, do-nothing dominance) + MPC loop state machine **and required pipeline diagram**: see **“3) Stability”**.
+- ✅ (4) Formal safety + policy constraints encoded as config + deployability gate + constraint enforcement table: see **“4) Safety + policy constraint formalization”**.
+- ✅ (5) Failure modes (comms/partitioning, compute/latency, model divergence, incident/weather bias) with SAFE_HOLD and fallback ladder: see **“5) Failure modes and safe degradation”**.
+- ✅ (6) Governance/audit: per-cycle evidence fields, explainability card, change control, ops KPIs: see **“6) Governance, auditability, and operator integration”**.
+- ✅ (7) Deployable artifacts: **required action-class table**, bounded action vocabulary, shadow-mode acceptance criteria, replay/regression test plan, rollback contract/interface: see **“7) Implementation artifacts”**.
+- ✅ End sections present: **Implementation Checklist**, **Operations Runbook (SOP)**, **Governance/Audit Runbook**, **Reference Links**, **Completion Checklist**.
 
 ---
 

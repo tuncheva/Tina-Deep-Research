@@ -88,6 +88,63 @@ The program should continuously improve the menu by comparing predicted outcomes
 
 ## Implementation Additions (Implementation-Ready)
 
+### 0) End-to-end option pipeline diagram (required visual)
+
+This diagram shows the **full flow** from option generation through gating, scoring, UI, application, and audit.
+
+```text
+[Live State + Data Health]
+       │
+       ▼
+[Option Generator]
+  - Uses safe templates (plan switch, split/offset tweak, mode change)
+  - Produces 3–10 candidate options
+       │
+       ▼
+[Deployability Gating Engine]
+  - Evaluate HARD constraints (safety, legality, controller capability)
+  - Evaluate SOFT constraints (equity, spillback, policy warnings)
+  - Output:
+      - BLOCKED options (never shown to operator)
+      - WARN options (deployable with warnings)
+      - OK options (fully deployable)
+       │
+       ▼
+[Scoring & Ranking]
+  - Predict KPI deltas (delay, queues, spillback, ped delay, safety proxies)
+  - Compute confidence + data-freshness flags
+  - Rank options with safety-first rules
+       │
+       ▼
+[Operator UI — Option Menu]
+  - Cards: headline + top 3 KPI deltas + confidence
+  - Indicators: BLOCKED (hidden), WARN (banner), OK (normal)
+  - Shows rollback plan + max duration
+       │
+       ├───────────────► [NO ACTION]
+       │                  - operator dismisses/defers
+       │
+       ▼
+[Apply Option]
+  - Explicit confirmation
+  - Commands sent to controllers/ATMS
+  - Start observation window (T_observe)
+       │
+       ▼
+[Monitoring & Rollback]
+  - Compare realized KPIs to predictions
+  - Watch safety/equity constraints
+  - If violations or poor outcomes → execute rollback
+       │
+       ▼
+[Audit & Learning]
+  - Immutable evidence bundle stored
+  - Update prediction scorecards
+  - Propose template/constraint/UI changes
+```
+
+This is the reference **option generation → gating → scoring → UI → apply → audit** pipeline required for deployment.
+
 ### 1) “Deployability gating” specification (Allowed/Blocked must be rigorous)
 “Deployable” must mean **this option can be safely executed right now on this exact infrastructure**. Treat deployability as a dedicated gating engine, not as a UI label.
 
@@ -132,7 +189,8 @@ Rule priority / arbitration:
 - **Known-bad test cases**: must remain blocked forever (e.g., options that violate ped clearance).
 - **Change control**: constraints are versioned; changes require approval and release notes.
 
-#### Constraint table (template)
+#### Constraint table (required visual: constraint → data → fail message → operator action)
+
 | Constraint | Data required | Check logic (sketch) | Failure message | Operator action |
 |---|---|---|---|---|
 | Ped min walk/clearance preserved | controller ped timings; phase map | `new_walk>=min && new_clear>=min` | “Blocked: ped minimum would be violated at X.” | Pick another option; escalate to engineer |
@@ -144,6 +202,7 @@ Rule priority / arbitration:
 **Telemetry alignment**: ATSPM provides high-resolution data and performance measures that support monitoring timing/operations and diagnosing issues (e.g., split failures, coordination, pedestrian delay use cases) ([`Automated Traffic Signal Performance Measures (FHWA-HOP-20-002)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm:1)). Use ATSPM-derived checks where feasible.
 
 ### 2) Human factors and UI failure modes (beyond choice overload)
+
 Human factors problems in TMC environments are well-known; FHWA provides TMC human factors guidelines including topics such as operator workload/vigilance, multitasking, minimizing interruptions, keeping operators in the loop, and avoiding decisionmaking biases like confirmation bias and anchoring ([`Human Factors Guidelines for Transportation Management Centers (FHWA-HRT-16-060)`](https://www.fhwa.dot.gov/publications/research/safety/16060/16060.pdf:1)).
 
 #### Risks to explicitly design against
@@ -170,6 +229,7 @@ Human factors problems in TMC environments are well-known; FHWA provides TMC hum
 - Operator trust calibration: survey + observed behavior shows both acceptance and appropriate skepticism.
 
 ### 3) Accountability model (who is responsible for what; what evidence is stored)
+
 The system must make accountability explicit.
 
 #### Responsibility partitioning
@@ -201,6 +261,7 @@ Store an immutable record:
 - Outputs: tuning tasks, constraint-rule changes, UI copy changes, training updates.
 
 ### 4) Predicted vs actual feedback loop (without optimizing what’s easiest to predict)
+
 Use a scorecard that separates prediction accuracy from decision quality.
 
 #### Scorecard structure
@@ -225,6 +286,7 @@ Use a scorecard that separates prediction accuracy from decision quality.
 Each track has its own versioning and approvals.
 
 ### 5) Integration with incident command and external stakeholders
+
 Operators act in a broader incident management ecosystem.
 
 #### Incident management inputs
@@ -319,12 +381,13 @@ For any applied option, auto-generate an **Action Summary**:
 - FHWA TMC human factors guidance: [`Human Factors Guidelines for Transportation Management Centers (FHWA-HRT-16-060)`](https://www.fhwa.dot.gov/publications/research/safety/16060/16060.pdf:1)
 
 ## Completion Checklist
-- ✅ Deployability gating spec + constraint table: see **“1) Deployability gating”**.
+- ✅ End-to-end option pipeline **diagram** added: see **“0) End-to-end option pipeline diagram (required visual)”**.
+- ✅ Deployability gating spec + **constraint table** (constraint → data → fail message → operator action): see **“1) Deployability gating”**.
 - ✅ Human factors + UI failure modes + acceptance criteria: see **“2) Human factors…”**.
 - ✅ Accountability model + click-time evidence bundle + review workflow: see **“3) Accountability model”**.
 - ✅ Predicted vs actual feedback loop + drift guardrails + separated change tracks: see **“4) Predicted vs actual feedback loop”**.
 - ✅ Integration with incident command and stakeholders + action summaries + permissions: see **“5) Integration…”**.
-- ✅ Final required sections added: **Implementation Checklist**, **Operator Workflow / SOP**, **Governance & Audit Runbook**, **Reference Links**, **Completion Checklist**.
+- ✅ Final required sections present: **Implementation Checklist**, **Operator Workflow / SOP**, **Governance & Audit Runbook**, **Reference Links**, **Completion Checklist**.
 
 ---
 

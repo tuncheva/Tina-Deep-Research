@@ -16,440 +16,436 @@ Before real attackers find the weak spots, you hire your own “attackers” and
 
 The outputs are production-ready artifacts: a versioned scenario library, tuning targets and stop conditions, detection rules and dashboards, playbooks for operations and incident response, and procurement/acceptance requirements.
 
-This is **not** a one-off penetration test. It is an engineering + operations discipline aligned to OT constraints (availability, determinism, safety, and “don’t break the plant/intersection”). NIST highlights OT’s unique performance, reliability, and safety requirements and the need for OT-specific countermeasures and architectures. [NIST SP 800-82r3](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-82r3.pdf)
+---
 
-## Why this matters (benefits)
+## 1) Formal Scope, Threat Model, and Worst-Outcomes Taxonomy
 
-- **Finds failures before the public does**: converts “we think it’s safe” into “we tested these conditions and know the outcomes.”
-- **Turns cyber risk into ops/safety impact**: measures spillback, blocked-box proxies, pedestrian delay, and coordination collapse under attack.
-- **Validates mitigations instead of assuming them**: plausibility checks, mode hysteresis, fallback plans, and network protections are verified against adversarial stimuli.
-- **Improves readiness**: drills and clear stop conditions reduce time-to-safe-state.
+### 1.1 Scope (systems in and out)
 
-## Constraints and challenges (what can go wrong)
+**In scope (typical):**
+- Field controllers (NEMA/ATC/UTCS etc.) and local timing plans
+- Detection: loops, radar, video analytics, ped buttons, probe/AVL feeds
+- Field cabinets and communications (fiber, copper, wireless, VPNs)
+- Central ATMS/TMC software, data brokers, and APIs
+- Performance analytics systems (ATSPM, dashboards)
+- Digital twins and simulation environments used for testing
+- Vendor-hosted cloud services that influence signal operations
 
-- **Realism vs. safety**: credible attacks must be modeled without risking field operations.
-- **Coverage**: you will not model everything; prioritize attack surface and consequences.
-- **False positives**: aggressive detection can create operational harm via needless fallbacks.
-- **OT fragility**: OT environments require careful change control and tested patches. [NIST SP 800-82r3](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-82r3.pdf)
+**Out of scope (unless explicitly approved):**
+- Production police/fire CAD systems (beyond simulated interfaces)
+- City-wide IT infrastructure outside the signal network
+- Non-transport safety-critical systems not integrated with signals
+
+Red-team exercises against systems “out of scope” require separate governance and approvals.
+
+### 1.2 Threat model (attacker types and capabilities)
+
+**Adversary classes:**
+- **External attacker**: internet-based or on-street adversary probing exposed services or wireless links.
+- **Insider (malicious or careless)**: staff/contractor with legitimate access misusing credentials or exporting data.
+- **Compromised vendor/subprocessor**: vendor-side breach giving access to management portals or data stores.
+- **Opportunistic attacker**: e.g., exploiting exposed/default devices on field cabinets.
+
+**Capabilities considered:**
+- Network scanning, MITM, replay, and injection on field or backhaul networks
+- Configuration tampering (timing plans, preemption rules)
+- Data tampering (sensor spoofing, bogus priority requests, time spoofing)
+- Denial of service (DoS) against central/edge components
+
+### 1.3 Worst-outcomes taxonomy (what we explicitly want to prevent)
+
+Categorize worst outcomes to prioritize testing and mitigations:
+
+- **Category A — Safety-critical traffic outcomes**
+  - Conflicting greens / loss of safe phasing
+  - Systematic failure of pedestrian protections (no WALK, no clearance)
+  - Incorrect or disabled emergency vehicle preemption
+  - Persistent queue spillback blocking crosswalks or intersections
+
+- **Category B — Operational disruption**
+  - Large-scale corridor or network freeze, flash, or miscoordination
+  - Inability to return from degraded/fallback modes
+  - Loss of visibility (operators blind to field states)
+
+- **Category C — Data and privacy compromise**
+  - Unauthorized access to sensitive telemetry or logs
+  - Exfiltration of more-than-aggregate data from signal analytics
+
+- **Category D — Integrity of governance and trust**
+  - Undetected tampering with logs, audit trails, or alarms
+  - Misleading or suppressed alerts during incidents
+
+Red-team scenarios should always map to one or more categories and define **success criteria** in terms of: prevented Category A, reduced probability/impact of B–D, improved detection and response metrics.
 
 ---
 
-## 1) Threat model and scope (what we test)
+## 2) Validation Ladder: From Tabletop to Field (Required Visual: Ladder Table)
 
-### 1.1 Assets and trust boundaries (minimum list)
+Red-teaming must progress in **stages**, with strict guardrails. Treat this as a ladder; you don’t jump straight to live field experiments.
 
-Document the system as zones and conduits (OT, field networks, backhaul, IT, cloud). At minimum include:
+### 2.1 Attack/failure injection validation ladder (tabletop → sim → HIL → field)
 
-- **Field devices**: controller cabinet, MMU, detector inputs, pedestrian devices, preemption interfaces.
-- **Sensors**: loops, radar, video detection pipelines (camera → analytics → calls).
-- **Comms**: fiber/cellular backhaul, VPNs, radios, maintenance ports.
-- **Central systems**: ATSPM, signal management, timing plan distribution, certificate/time services.
-- **Operator tooling**: laptops, jump boxes, remote access solutions, vendor maintenance channels.
+| Stage | Environment | Examples | Allowed attack/failure types | Exit criteria |
+|---|---|---|---|---|
+| **Tabletop** | Conference room / whiteboard / documents | Walk through "what if" scenarios; incident reviews | Hypothetical attacks, process failures, social/operational gaps | Scenario card defined; mitigations and detection hypotheses captured; no live systems touched |
+| **Simulation (Twin-only)** | Digital twin; no real hardware | Simulate detector spoofing, comms delays, corrupted messages | Synthetic data/attack patterns into twin; no real controllers | Safety invariants always maintained in sim; Category A outcomes ruled out under modeled defenses; metrics baselined |
+| **HIL (Hardware-in-the-loop)** | Lab controllers + twin / test cabinet | Real controller configs; network impairments; mis-timed plans | Inject faults/attacks on lab networks; config tampering on non-production hardware | Controllers recover to safe modes; logs/audit entries complete; detection thresholds tuned; no impact on field devices |
+| **Controlled Field** | Limited real intersections; off-peak; with approvals | Simulated comms degradations; benign fault injections with strict bounds | Very constrained exercises (e.g., disabling central influence; increasing latency), under SOP + stop conditions | No safety regressions; Category A outcomes remain impossible; on-street KPIs within pre-approved bounds; debrief + sign-off |
 
-CISA highlights the risk of connecting OT/ICS to business IT and the value of segmentation, DMZs, and carefully controlled remote access. [CISA ICS Best Practices](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf)
-
-### 1.2 Adversaries and threat objectives (traffic-signal flavored)
-
-Define actors by capability and goal:
-
-- **Opportunistic**: commodity malware/ransomware that spills into OT-adjacent networks.
-- **Targeted vandalism**: disrupt an event corridor, create congestion, manipulate pedestrian service.
-- **Insider/contractor misuse**: configuration changes, credential abuse, maintenance port misuse.
-- **Supply-chain**: compromised updates, tainted vendor remote access.
-
-NIST describes OT threat sources and vulnerabilities and emphasizes countermeasures tailored to OT environments. [NIST SP 800-82r3](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-82r3.pdf)
-
-### 1.3 In-scope attack surfaces (starter menu)
-
-Organize the scenario library by “surface”:
-
-1. **Sensor manipulation**
-   - Stuck-on / stuck-off detectors
-   - Video occlusion/glare/rain + adversarial patterns
-   - Radar saturation or spoof-like artifacts
-2. **Network degradation**
-   - Delay, jitter, loss, reordering
-   - Partition (site isolated from central)
-   - DNS/certificate/time failures affecting central integrations
-3. **Time sync integrity**
-   - Drift, step changes, NTP unreachability
-4. **Configuration integrity**
-   - Timing plan push anomalies
-   - Detector mapping swaps
-   - Wrong intersection geo/topology metadata
-5. **Remote access and maintenance**
-   - Jump host misuse
-   - Persistent vendor access attempts
-
-CISA recommends minimizing and securing network connections to ICS and cautions against persistent remote vendor or employee connection to the control network; it also emphasizes using jump servers and monitoring remote connections. [CISA ICS Best Practices](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf)
-
-### 1.4 Out-of-scope by default (until explicit written authorization)
-
-Default “no” list, unless explicitly approved in a signed test plan:
-
-- Production DoS/DDoS, radio jamming, or anything that can impair public safety
-- Physical intrusion/tampering
-- Social engineering
-- Tests that touch non-owned vendor infrastructure without vendor permission
-
-This matches the “avoid disruption” posture and disallowed test-method patterns in standard vulnerability disclosure policy language. [CISA VDP Template](https://www.cisa.gov/vulnerability-disclosure-policy-template)
+**Rule:** no scenario moves to a higher rung without documented success and safety review on the previous rung.
 
 ---
 
-## 2) Program architecture (how we run it continuously)
+## 3) Red-Team Lifecycle Diagram (Required Visual: discover → simulate → mitigate → retest → deploy)
 
-### 2.1 People: core roles
+### 3.1 Lifecycle overview
 
-Minimum viable program staff:
+```text
+[Discover]
+  - Threat modeling
+  - Vulnerability reviews
+  - Incident postmortems
+        │
+        ▼
+[Design Scenario]
+  - Define scope and objectives
+  - Map to worst-outcome categories
+  - Choose ladder stage (tabletop/sim/HIL/field)
+  - Define safety boundaries + stop conditions
+        │
+        ▼
+[Simulate / Inject]
+  - Run scenario at chosen ladder stage
+  - Collect logs, KPIs, operator responses
+        │
+        ▼
+[Analyze & Score]
+  - Classify findings (vuln, gap, false alarm, etc.)
+  - Quantify impact on safety & operations
+        │
+        ▼
+[Mitigate]
+  - Design and implement fixes:
+    * configs, code, procedures, training, vendor changes
+        │
+        ▼
+[Retest]
+  - Re-run scenario at same or higher ladder rung
+  - Confirm mitigation effectiveness
+        │
+        ▼
+[Institutionalize & Deploy]
+  - Update SOPs, detection rules, dashboards
+  - Update procurement/acceptance criteria
+  - Feed lessons into new scenario design
+        └───────────────────────────────▶ (back to [Discover])
+```
 
-- **Program Owner (Traffic Ops)**: owns outcomes, prioritization, stop conditions.
-- **Red Team Lead (Security/OT)**: scenario design, safe execution, reporting.
-- **Twin/Testbed Lead (Engineering/Modeling)**: fidelity, injection tooling, harness.
-- **OT/IT Network Lead**: architecture, segmentation/DMZ, monitoring.
-- **Vendor/Integrator Liaison**: authorization, patches, contract clauses.
-- **Safety Officer**: field safety and “stop the test” authority.
-
-### 2.2 Governance artifacts (versioned)
-
-Maintain:
-
-- **Threat model** (assets, trust boundaries, threats, consequences)
-- **Scope and authorization memo** (what is in/out, test windows, contacts)
-- **Scenario library** (versioned, reproducible)
-- **Mitigation registry** (owner, deployment stage, rollback plan)
-- **Stop-condition matrix** (when to halt a test)
-- **After-action review (AAR)** templates and retention rules
-
-### 2.3 Environments (do not start in production)
-
-1. **Twin environment**: the “safest” place to explore conditions and tune detection.
-2. **Lab/HIL**: controller-in-the-loop, sensor replay, timing plan push simulation.
-3. **Shadow monitoring**: production data observed, but mitigations not actively changing signal behavior.
-4. **Carefully bounded field pilots**: only after passing safety gates.
-
-NIST stresses OT availability and safety requirements; this staged approach is designed to honor those constraints. [NIST SP 800-82r3](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-82r3.pdf)
-
----
-
-## 3) Twin fidelity validation ladder (prove your simulator is “good enough”)
-
-A red-team program fails if the twin is unrealistic. Use a ladder where you must pass each rung before trusting higher-impact results.
-
-### 3.1 Ladder rungs
-
-**R0 — Interface sanity**
-- Can we ingest and replay detector calls, phase states, and timing plans with correct schema/time ordering?
-
-**R1 — Metric parity**
-- Baseline KPIs match production for “quiet days”: arrival profiles, green utilization, split failures, pedestrian delay.
-
-**R2 — Dynamics parity**
-- Under normal perturbations (rain, glare, event surge), the twin reproduces expected operator-observed behaviors.
-
-**R3 — Fault parity**
-- Under non-malicious failures (stuck detectors, comms dropouts), the twin reproduces known failure signatures.
-
-**R4 — Adversarial plausibility**
-- Attack injections are constrained by what is physically and operationally plausible (e.g., sensor noise envelopes, comms constraints).
-
-**R5 — Decision parity (hardest)**
-- Mitigation decisions (fallback triggers, dwell/hysteresis behavior) match what would be acceptable in field operations.
-
-NIST’s OT guidance includes architectures and risk management approaches intended to respect performance and availability constraints; the ladder operationalizes that principle for simulation fidelity. [NIST SP 800-82r3](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-82r3.pdf)
-
-### 3.2 Fidelity gates (exit criteria)
-
-A rung is “passed” only if:
-
-- Data parity is within agreed tolerances (e.g., ±10% for key KPIs under baseline).
-- There is a documented **model limitation register** (what you cannot claim).
-- The test harness is deterministic/replayable (same seed → same results).
+Use this lifecycle as the **governance backbone**: every scenario must be somewhere on this loop, and no mitigation is “done” until re-tested.
 
 ---
 
-## 4) Scenario/attack library (repeatable, measurable, safe)
+## 4) Scenario Card Template + Sample Scenarios (Required Visual)
 
-### 4.1 Scenario specification template (copy/paste)
+### 4.1 Scenario card template (what every red-team scenario must specify)
 
-Each scenario is a single markdown/YAML entry in a repo:
+Each scenario is a structured card; this becomes a versioned library.
 
-- **ID**: RT-###
-- **Surface**: sensor | network | time | config | remote-access
-- **Goal**: what “bad outcome” we attempt (e.g., starve ped phase, create spillback)
-- **Preconditions**: topology, demand profile, plan state
-- **Injection**: how, where, and for how long
-- **Safety stop conditions**: conditions that halt simulation/field trial
-- **Expected observables**: telemetry symptoms
-- **Metrics**: detection time, FP rate, KPI degradation, recovery time
-- **Mitigations under test**: version pins
+```markdown
+# Scenario Card — RT-XXX
 
-### 4.2 Starter set (top 12)
+## A. Metadata
+- Scenario ID:
+- Title:
+- Category (A/B/C/D from worst-outcomes taxonomy):
+- Owner:
+- Status: [Proposed / In design / Active / Retired]
 
-1. RT-001: Detector channel stuck-on (major street)
-2. RT-002: Detector channel stuck-off (minor street)
-3. RT-003: Video glare → false calls spike
-4. RT-004: Video occlusion → call dropouts
-5. RT-005: Backhaul delay 500–2000ms + jitter
-6. RT-006: Backhaul packet loss 5–20%
-7. RT-007: Central partition 30 minutes (site isolated)
-8. RT-008: Time step +30s (NTP tamper-like)
-9. RT-009: Slow drift 100ppm for 4 hours
-10. RT-010: Timing plan push with swapped detector map
-11. RT-011: Certificate/PKI failure blocks central integration
-12. RT-012: Remote access attempt outside window (alert-only in lab)
+## B. Scope
+- Systems in scope:
+- Environments allowed: [Tabletop / Sim / HIL / Field]
+- Preconditions (plans active, time-of-day, events):
 
-CISA emphasizes disabling unnecessary services, monitoring, and controlling remote connections, which maps directly to RT-012 and the remote-access telemetry you should exercise. [CISA ICS Best Practices](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf)
+## C. Attack / Failure Description
+- Type (e.g., detector spoofing, comms delay, config tampering):
+- Steps (high level):
+- Tooling required:
 
----
+## D. Safety Boundaries and Stop Conditions
+- Prohibited actions:
+- Hard stop conditions (what immediately halts test):
+- Required monitoring (KPIs, alarms):
 
-## 5) Mitigation ownership and RACI (who fixes what)
+## E. Success Criteria
+- Detection metrics:
+- Response metrics:
+- Residual risk notes:
 
-A red-team program generates findings. If ownership is vague, nothing ships.
+## F. Mitigation & Closure
+- Mitigation actions:
+- Owners and target dates:
+- Retest plan and date:
+- Closure evidence (link to logs/reports):
+```
 
-### 5.1 RACI table (minimum)
+### 4.2 Scenario card table with sample scenarios
 
-| Area | Example mitigations | Responsible | Accountable | Consulted | Informed |
-|---|---|---|---|---|---|
-| Detector plausibility + fusion | stuck-on/off detection, cross-sensor checks, dwell timers | Traffic Eng | Traffic Ops Dir | Vendor/Integrator, Safety | IT/Sec |
-| Network segmentation & DMZ | zone boundaries, firewall rules, jump servers | IT/Network | CIO/IT Dir | OT/Traffic Ops, Vendor | Security |
-| Remote access hardening | MFA, time-bound access, no persistent connections | IT/Network | CIO/IT Dir | Security, Vendor | Traffic Ops |
-| Monitoring & alerting | IDS/SIEM rules, baselining, dashboards | Security | CISO | IT/OT Ops | Leadership |
-| Controller/firmware patching | lab test, rollout, rollback | Vendor/Integrator + OT Ops | Traffic Ops Dir | Security | Field Techs |
-| Incident response for OT | runbooks, comms, exercises | Security + OT Ops | CISO | Legal/Comms | Leadership |
+| Scenario ID | Type | Ladder stage(s) | Brief description | Worst-outcome category | Stop conditions (summary) | Primary owner |
+|---|---|---|---|---|---|---|
+| RT-COMMS-01 | Comms delay / loss | Sim → HIL → limited field | Inject increasing latency and drop rates between central and field controllers to test delay-tolerant modes | B (operational disruption), A (safety if mis-handled) | Any unexpected flash; ped min violations; preemption misbehavior; unplanned loss of visibility | Signals engineering + IT/network |
+| RT-DETECT-01 | Detector spoofing / stuck | Sim → HIL | Feed unrealistic occupancy/volume to mimic stuck-on or spoofed detector and see if plausibility checks and delay-tolerant modes trigger | A (safety via RLR/spillback), B | Any unbounded queue spillback; crosswalk blockages; uncontrolled phase max-outs | Signals engineering + maintenance |
+| RT-TSP-ABUSE-01 | Priority abuse (transit/fleet) | Sim | Send high-frequency TSP/priority requests that meet nominal rules but create unfair harm | B, D (trust) | Cross-street delay caps exceeded; repeated starvation of protected movements | Signals + transit ops |
+| RT-CONFIG-01 | Config tampering | Tabletop → HIL | Attempt unauthorized config change in lab (timing plans, preemption order) to test change-control and detection | C, D | Any unlogged config change; bypass of approval workflow | Security + signals engineering |
+| RT-VENDOR-01 | Vendor backdoor / over-privileged access | Tabletop → controlled vendor test | Simulate vendor support account misuse or credential leak to test access controls and audit logs | C, D | Vendor access without ticket; unlogged exports; failure to notify | Security + vendor management |
 
-CISA explicitly calls out segmentation, DMZs, jump servers, and “do not allow remote persistent vendor or employee connection to the control network,” which should be reflected as accountable requirements in the RACI. [CISA ICS Best Practices](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf)
-
-### 5.2 Finding lifecycle (SLAs)
-
-- **Triage (≤5 business days)**: confirm reproducibility, classify severity by ops/safety impact.
-- **Mitigation plan (≤15 business days)**: owner, approach, test plan, rollback plan.
-- **Validation**: must pass regression suite in twin/lab.
-- **Deployment**: staged rollout + monitoring.
-- **Closure**: evidence attached (test results + change ticket).
+New scenarios should follow this pattern and be added only after scope, boundaries, and owners are defined.
 
 ---
 
-## 6) Responsible disclosure governance (VDP adapted to signals)
+## 5) Mitigation Ownership, Closure Workflow, and RACI
 
-Even if your red-teaming is mostly internal, you need a **public-facing path** for good-faith reports and a clear authorization posture.
+### 5.1 Mitigation and closure workflow
 
-### 6.1 Publish a Vulnerability Disclosure Policy (VDP)
+1. **Finding captured**
+   - Scenario run produces findings (vulnerability, missing detection, unsafe behavior, process gap).
+   - Classify severity and category (A/B/C/D) and environment (tabletop/sim/HIL/field).
 
-Use plain-language authorization and scope definitions. CISA’s VDP template provides recommended authorization language that frames good-faith research as authorized and commits to not pursuing legal action when the policy is followed. [CISA VDP Template](https://www.cisa.gov/vulnerability-disclosure-policy-template)
+2. **Ticket & owner assignment**
+   - Open a tracked ticket (or issue) per distinct finding.
+   - Assign **clear owners** (signals, IT, security, vendor) and due dates.
 
-Minimum VDP components to adapt:
+3. **Mitigation design & implementation**
+   - Define technical, procedural, and governance changes (configs, code, SOPs, training, contract updates).
 
-- **Authorization statement** (good faith research is authorized if policy followed) [CISA VDP Template](https://www.cisa.gov/vulnerability-disclosure-policy-template)
-- **Guidelines** (avoid privacy violations, avoid disruption, stop if sensitive data encountered) [CISA VDP Template](https://www.cisa.gov/vulnerability-disclosure-policy-template)
-- **Disallowed methods** (DoS/DDoS, physical testing, social engineering) [CISA VDP Template](https://www.cisa.gov/vulnerability-disclosure-policy-template)
-- **Scope** (allowlist/denylist; vendor authorization constraints) [CISA VDP Template](https://www.cisa.gov/vulnerability-disclosure-policy-template)
-- **Reporting channels** (web form/email; allow anonymous submission; acknowledgement targets) [CISA VDP Template](https://www.cisa.gov/vulnerability-disclosure-policy-template)
+4. **Retest**
+   - Re-run the scenario (or an equivalent) at the appropriate ladder rung.
+   - Document that the worst-outcome category is mitigated or risk reduced and accepted.
 
-### 6.2 Align internal red-team with VDP rules
+5. **Closure**
+   - Mark ticket closed only when: mitigation deployed, retest passed, documentation updated.
+   - Archive evidence: logs, configs, sign-offs.
 
-- Your internal team must follow the same “avoid disruption” and “stop if sensitive data encountered” constraints.
-- Maintain an explicit “test methods not authorized” list for internal exercises.
-- Ensure vendor and MSP contracts explicitly permit your approved testing in non-production environments.
+### 5.2 RACI for red-team program
 
----
+| Activity | Program Owner | Signals Ops | Traffic Engineering | IT/Network | Security | Vendors | Legal/Privacy | Leadership |
+|---|---|---|---|---|---|---|---|---|
+| Define scope & threat model | R | C | C | C | C | C | C | A |
+| Approve scenario cards | R | C | C | C | C | C | I | A |
+| Run tabletop exercises | R | R | C | C | C | I | I | I |
+| Run sim/HIL tests | R | C | R | C | C | C | I | I |
+| Approve field tests | R | R | R | C | C | C | C | A |
+| Implement mitigations | C | C | R | R | R | R | C | I |
+| Maintain logs & evidence | R | C | C | C | R | C | C | I |
+| Publish leadership scorecard | R | C | C | C | C | I | C | A |
 
-## 7) Safety realism and stop conditions (when to halt)
-
-OT testing must treat safety and availability as first-class constraints.
-
-### 7.1 Stop-condition matrix (examples)
-
-| Category | Stop now if… | Immediate action |
-|---|---|---|
-| Field safety | any risk of unsafe signal indications | revert to safe fixed-time plan; notify safety officer |
-| Operations | sustained spillback/blocked-box proxy exceeds threshold | halt injection; go to conservative timing; log event |
-| Cyber | evidence of unintended spread beyond scope | isolate environment; incident response escalation |
-| Privacy/data | sensitive data encountered unexpectedly | stop; preserve evidence; notify security/legal |
-
-CISA’s VDP template explicitly states that if sensitive data is encountered, testing must stop and the issue must be reported immediately. [CISA VDP Template](https://www.cisa.gov/vulnerability-disclosure-policy-template)
-
-### 7.2 “Safe realism” rules for simulations
-
-- Attack parameters must be bounded by physical and network plausibility.
-- Every scenario must define a conservative fallback state.
-- Any field trial must have a pre-approved rollback procedure and an on-call response chain.
-
-NIST notes OT systems have unique reliability and safety requirements; the above rules make those requirements explicit gates. [NIST SP 800-82r3](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-82r3.pdf)
+R = Responsible, A = Accountable, C = Consulted, I = Informed.
 
 ---
 
-## 8) Metrics and cadence (how we prove progress)
+## 6) Responsible Disclosure and Sensitivity Controls
 
-### 8.1 Core metrics (tracked per release)
+### 6.1 Internal vs external red-teaming
 
-**Detection quality**
-- Time-to-detect (TTD) per scenario
-- False positives per hour (FP/hr) by surface
-- Precision/recall for labeled injections
+- **Internal red team / blue team**: operates under agency governance, with strict logging and approvals.
+- **External testers (consultants, researchers)**:
+  - Must operate under a contract / engagement letter.
+  - Scope, ladders, and stop conditions must be documented.
 
-**Operational harm under attack**
-- Δ queue length / travel time vs baseline
-- Split failure rate
-- Pedestrian service violations / delay
-- Recovery time to baseline
+### 6.2 Responsible disclosure policy
 
-**Program health**
-- % scenarios automated
-- Regression suite duration
-- Finding SLA compliance
-- Top recurring root causes (config, time, comms, sensor)
+- Provide a clear, public channel for vulnerability reporting (e.g., security email, web form).
+- Commit to **safe harbor** for good-faith researchers within published rules.
+- Define timelines for triage and remediation.
 
-### 8.2 Cadence (minimum viable)
+### 6.3 Sensitivity, classification, and sharing controls
 
-- **Weekly**: scenario library grooming + new incident-to-scenario intake.
-- **Monthly**: regression run + tuning review.
-- **Quarterly**: tabletop/game-day exercise + AAR.
-- **Per change**: run suite for controller firmware updates, detection model changes, or central system upgrades.
+- Scenario details that could materially aid attackers should be classified (e.g., internal-only).
+- Public-facing materials may reference scenario classes and mitigations, but not step-by-step exploits.
+- Logs and artifacts must be handled under your security classification policy.
 
-CISA recommends continual monitoring and assessment of ICS and emphasizes incident response planning; cadence ensures this becomes routine rather than episodic. [CISA ICS Best Practices](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf)
+### 6.4 Integration with incident response
+
+- Red-team findings must feed into existing incident response and cybersecurity practices (e.g., aligned with CISA ICS guidance).
+- Ensure playbooks cover both **simulated** and **real** incidents consistently.
 
 ---
 
-## 9) Detailed implementation plan (90-day “start small, make it real”)
+## 7) Safety-Critical Realism Boundaries and Stop Conditions
 
-### Weeks 1–2: Charter and scope
+### 7.1 Safety realism boundaries
 
-- Define outcomes: what constitutes “unacceptable” ops/safety impact.
-- Create the initial allowlist/denylist and disallowed test methods.
-- Publish internal authorization memo.
+- **Never** intentionally generate conflicting greens or known unsafe phase sequences in the field.
+- **Never** disable or bypass pedestrian protections or emergency preemption in live traffic purely for testing.
+- Safety-focused behaviors (e.g., delay-tolerant fallback, self-healing fail-safe modes) are **in scope** for red-teaming, but only via simulations/HIL or highly constrained field tests with robust observation.
 
-### Weeks 3–6: Build the harness
+### 7.2 Stop conditions (hard abort rules)
 
-- Data ingestion/replay tooling (detectors, SPaT, timing plans).
-- Injection framework (network conditions, sensor distortions, config swaps).
-- Metric computation (ATSPM-style KPIs, safety proxies).
+Define **immediate stop** conditions for any field or HIL test:
 
-### Weeks 7–10: Baseline + fidelity ladder to R2
+- Any indication of ped minimum WALK/clearance not being served per policy.
+- Any observed or reported conflicting greens.
+- Unexpected transition to flash or dark at an unapproved site.
+- Queue spillback into rail crossings, critical crosswalks, or high-risk junctions.
+- Unexpected loss of comms to a cluster of intersections.
+- Operator or field staff reports unsafe behavior.
 
-- Calibrate baseline parity.
-- Validate dynamics under non-malicious perturbations.
+Stop conditions must be encoded in procedures and, where feasible, automated via watchdogs.
 
-### Weeks 11–13: First red-team suite
+---
 
-- Implement RT-001…RT-006.
-- Tune detection thresholds and fallback dwell/hysteresis.
+## 8) Metrics, Cadence, and Leadership Scorecard
 
-### Week 14: First game day
+### 8.1 Program metrics
 
-- Tabletop + lab run.
-- Produce AAR with concrete backlog.
+Track metrics across **scenarios**, **systems**, and **time**:
 
-### Week 15–13 (ongoing): Harden remote access + monitoring
+- **Coverage metrics**
+  - # of active scenarios by category (A/B/C/D).
+  - % of priority systems covered by at least one scenario.
 
-- Implement “no persistent remote connections,” jump servers, and monitoring of remote access events. [CISA ICS Best Practices](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf)
+- **Detection & response metrics**
+  - % of simulated attacks detected at each ladder stage.
+  - Time-to-detect and time-to-mitigate (per scenario).
+
+- **Quality of mitigations**
+  - % of mitigations passing retest on first attempt.
+  - # of repeated findings (regressions) per quarter.
+
+- **Safety & stability**
+  - # of field tests halted by stop conditions (and why).
+  - No Category A outcome ever induced in field tests.
+
+- **Governance health**
+  - % of scenarios with current owners and status.
+  - Age of open high-severity findings.
+
+### 8.2 Cadence
+
+- **Monthly**: red-team review
+  - New scenario proposals
+  - Review findings and mitigations
+  - Approve next month’s test plan
+
+- **Quarterly**: leadership briefing
+  - Scorecard of metrics above
+  - Trends in resilience and safety
+  - Budget/roadmap alignment
+
+- **Annually**: program audit
+  - External/internal review of scope, controls, evidence, and outcomes
+  - Update threat model and ladder policies
+
+### 8.3 Leadership scorecard (example)
+
+A high-level scorecard for leadership might include:
+
+- % of critical corridors covered by at least 1 active scenario
+- % of simulated critical-category attacks detected and mitigated within target times
+- # open high-severity findings older than N days
+- # field tests halted by safety stop conditions (and corrective actions completed)
+- Trend of ATSPM/anomaly indicators associated with issues found during red-teaming
+
+This turns red-teaming into a **managed, reportable risk-reduction program** rather than an ad-hoc test.
+
+---
+
+## MVP Deployment
+
+- 3–5 initial scenarios (e.g., comms delay, detector spoofing, priority abuse).
+- Simulation and HIL only (no field tests in MVP).
+- One corridor or control cluster as primary focus.
+
+### Evaluation
+
+- # of significant findings per quarter.
+- Time from finding to mitigated+retested.
+- Improvement in detection/response metrics between cycles.
+- No safety incidents induced by tests.
 
 ---
 
 ## Implementation Checklist
 
-- [ ] Charter: program owner, safety officer, and red-team lead named
-- [ ] Written scope + authorization memo signed
-- [ ] “Out-of-scope by default” list documented
-- [ ] Twin environment running with replay + deterministic harness
-- [ ] Fidelity ladder passed to at least R2 with documented limitations
-- [ ] Scenario library repo created; template adopted
-- [ ] Top 6 scenarios implemented and reproducible
-- [ ] Telemetry dashboards for TTD/FP/hr/KPI deltas
-- [ ] Mitigation registry and RACI published
-- [ ] Regression suite wired into change control gates
-- [ ] First tabletop/game-day executed; AAR backlog created
-- [ ] VDP draft prepared and approved for publication path
+- [ ] Define scope (systems, environments) and threat model.
+- [ ] Define worst-outcomes taxonomy (A/B/C/D) and map to KPIs.
+- [ ] Establish validation ladder (tabletop → sim → HIL → field) with guardrails.
+- [ ] Design scenario card template and seed scenario library with owners.
+- [ ] Define mitigation and closure workflow; integrate with ticketing.
+- [ ] Define RACI for program governance.
+- [ ] Establish responsible disclosure policy and sensitivity controls.
+- [ ] Define safety realism boundaries and hard stop conditions.
+- [ ] Define metrics, cadence, and leadership scorecard.
+- [ ] Run initial tabletop + sim/HIL scenarios; produce first report.
 
 ---
 
-## Red-Team Operations Runbook (SOP)
+## Operations Runbook (SOP)
 
-### SOP-1: Pre-run approvals
+### SOP 0 — Running a scenario (any stage)
 
-1. Confirm environment (twin/lab/shadow/field pilot) and scope.
-2. Confirm stop conditions and on-call contacts.
-3. Confirm rollback plan and “safe fixed-time” configuration.
-4. Confirm logging destinations and time sync.
+1. Confirm scenario card is approved and in “Active” status.
+2. Verify scope, stage (tabletop/sim/HIL/field), and safety boundaries.
+3. Ensure monitoring/telemetry and logging are configured.
+4. Execute scenario steps as specified.
+5. Monitor for stop conditions; abort if any are met.
+6. Collect logs and KPIs.
+7. Debrief with participants.
+8. File findings, tickets, and mitigation actions.
 
-### SOP-2: Execute a scenario
+### SOP 1 — Approving a new scenario
 
-1. Pin versions: scenario ID, injection tooling version, mitigation version.
-2. Start baseline capture (10–30 minutes).
-3. Apply injection for defined duration.
-4. Monitor stop conditions continuously.
-5. End injection; observe recovery window.
-6. Export artifacts: metrics, logs, config snapshots.
+1. Review scope and threat model alignment.
+2. Confirm mapping to worst-outcomes categories.
+3. Validate safety boundaries and stop conditions.
+4. Assign owners (scenario owner + mitigation owners).
+5. Approve ladder stage(s) and schedule.
 
-### SOP-3: Post-run analysis
+### SOP 2 — Escalation
 
-1. Compute detection and ops-impact metrics.
-2. Classify finding severity by consequence (safety > availability > efficiency).
-3. File tickets with RACI owner; attach evidence.
-4. Update scenario notes (what was unrealistic/what failed).
-
-### SOP-4: Regression gate (release checklist)
-
-A change may ship only if:
-
-- All “must-pass” scenarios succeed, or a documented waiver is approved.
-- Remote access and monitoring controls remain intact (no new persistent connections). [CISA ICS Best Practices](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf)
+- If a test uncovers a safety-critical behavior (even in sim/HIL), escalate to safety and engineering leadership.
+- Suspend related scenarios until mitigations are defined.
 
 ---
 
-## Governance / Responsible Disclosure Runbook
+## Governance & Change-Control Runbook
 
-### GOV-1: Publish VDP
+### Ownership
 
-- Publish a VDP page and keep it updated as systems change. [CISA VDP Template](https://www.cisa.gov/vulnerability-disclosure-policy-template)
-- Include authorization language, scope, disallowed methods, and reporting channels. [CISA VDP Template](https://www.cisa.gov/vulnerability-disclosure-policy-template)
+- **Program owner** (e.g., Signals Resilience Lead): accountable for red-team scope and outcomes.
+- **Scenario owners**: accountable for specific scenario design and maintenance.
+- **Mitigation owners**: accountable for fixes and retests.
 
-### GOV-2: Intake and triage
+### Change control
 
-- Acknowledge reports quickly (target: 3 business days per the template’s example language). [CISA VDP Template](https://www.cisa.gov/vulnerability-disclosure-policy-template)
-- Allow anonymous reporting; do not require PII. [CISA VDP Template](https://www.cisa.gov/vulnerability-disclosure-policy-template)
+- Version scenario cards, ladders, and policies (SemVer-style or equivalent).
+- Any change to scopes, safety boundaries, or allowed field tests must be approved by program owner + safety lead.
+- Keep an audit trail of scenarios run, findings, and mitigations.
 
-### GOV-3: Coordinated remediation
+### Evidence management
 
-- Confirm scope/authorization; if out-of-scope, route to correct vendor.
-- Track remediation with SLAs; share status with reporter when possible.
-
-### GOV-4: Researcher safety rules (mirrors internal)
-
-- Avoid disruption; do not exfiltrate data; stop immediately if sensitive data is encountered. [CISA VDP Template](https://www.cisa.gov/vulnerability-disclosure-policy-template)
+- Store logs, reports, and approvals in a structured repository.
+- Ensure retention and access are consistent with security and privacy policies.
 
 ---
 
-## Reference links (≤5 sources)
+## Reference Links
 
-1. NIST SP 800-82 Rev. 3 (PDF): Guide to Operational Technology (OT) Security — https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-82r3.pdf
-2. NIST SP 800-82 Rev. 3 (landing page): https://csrc.nist.gov/pubs/sp/800/82/r3/final
-3. CISA: Vulnerability Disclosure Policy Template: https://www.cisa.gov/vulnerability-disclosure-policy-template
-4. CISA: Cybersecurity Practices for Industrial Control Systems (PDF): https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf
+- CISA ICS Cybersecurity best practices (for OT/ICS hardening and incident response)
+- FHWA ATSPM resources for anomaly detection and watchdog design
+- NIST Cybersecurity Framework and NIST Privacy Framework (governance vocabulary)
 
----
-
-## Completion checklist
-
-✅ Required sections added:
-
-- ✅ Threat model and scope: [`ideas/13-red-team-the-signals.md`](ideas/13-red-team-the-signals.md) (Sections 1.1–1.4)
-- ✅ Twin fidelity validation ladder: [`ideas/13-red-team-the-signals.md`](ideas/13-red-team-the-signals.md) (Section 3)
-- ✅ Mitigation ownership + RACI: [`ideas/13-red-team-the-signals.md`](ideas/13-red-team-the-signals.md) (Section 5)
-- ✅ Responsible disclosure governance: [`ideas/13-red-team-the-signals.md`](ideas/13-red-team-the-signals.md) (Section 6 + Governance Runbook)
-- ✅ Safety realism/stop conditions: [`ideas/13-red-team-the-signals.md`](ideas/13-red-team-the-signals.md) (Section 7)
-- ✅ Metrics/cadence: [`ideas/13-red-team-the-signals.md`](ideas/13-red-team-the-signals.md) (Section 8)
-
-✅ End sections appended:
-
-- ✅ Implementation Checklist: [`ideas/13-red-team-the-signals.md`](ideas/13-red-team-the-signals.md)
-- ✅ Red-Team Operations Runbook (SOP): [`ideas/13-red-team-the-signals.md`](ideas/13-red-team-the-signals.md)
-- ✅ Governance / Responsible Disclosure Runbook: [`ideas/13-red-team-the-signals.md`](ideas/13-red-team-the-signals.md)
-- ✅ Reference Links: [`ideas/13-red-team-the-signals.md`](ideas/13-red-team-the-signals.md)
-
-✅ Source cap:
-
-- ✅ Unique sources used: 4 (≤5)
+(These can be expanded with concrete URLs in [`ideas/sources.md`](ideas/sources.md).)
 
 ---
 
-Cross-links: Related ideas include [`ideas/11-delay-tolerant-smart-signals.md`](ideas/11-delay-tolerant-smart-signals.md), [`ideas/02-self-healing-intersections.md`](ideas/02-self-healing-intersections.md), and [`ideas/20-explainable-signals.md`](ideas/20-explainable-signals.md).
+## Completion Checklist
+
+- ✅ Formal scope, threat model, and worst-outcomes taxonomy: see **Section 1**.
+- ✅ Validation ladder (tabletop → sim → HIL → field) with table: see **Section 2**.
+- ✅ Red-team lifecycle diagram (discover → simulate → mitigate → retest → deploy): see **Section 3**.
+- ✅ Scenario card template + sample scenarios table: see **Section 4**.
+- ✅ Mitigation ownership, closure workflow, and RACI: see **Section 5**.
+- ✅ Responsible disclosure and sensitivity controls: see **Section 6**.
+- ✅ Safety-critical realism boundaries and stop conditions: see **Section 7**.
+- ✅ Metrics, cadence, and leadership scorecard: see **Section 8**.
+- ✅ End sections provided: **MVP Deployment**, **Evaluation**, **Implementation Checklist**, **Operations Runbook (SOP)**, **Governance & Change-Control Runbook**, **Reference Links**, **Completion Checklist**.

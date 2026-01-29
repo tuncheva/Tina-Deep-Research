@@ -69,7 +69,7 @@ Define staleness categories:
 - **Central/cloud influence is conditional** on freshness and integrity.
 - When in doubt, **reduce authority** (plan selection only, then freeze, then local fallback).
 
-### Per-feed contract table (operators + engineers use the same truth)
+### Per-feed contract table (required visual: feed → max age → allowed actions → operator UI message)
 
 | Data feed | Max age (FRESH) | Max age (DELAYED) | Allowed actions when DELAYED | If STALE/UNTRUSTED… | Operator message |
 |---|---:|---:|---|---|---|
@@ -85,7 +85,7 @@ Notes:
 ---
 
 ## Latency budgets by control type (what can tolerate delay)
-Not all actions are equally sensitive to delay. The Signal Timing Manual emphasizes stability in coordinated operation and documents transition methods used to return to coordination, which should be treated as higher-risk under uncertain timing/latency. See coordination and transition guidance in FHWA Signal Timing Manual Chapter 6 ([`FHWA Signal Timing Manual — Chapter 6`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter6.htm)).
+Not all actions are equally sensitive to delay. The Signal Timing Manual emphasizes stability in coordinated operation and documents transition methods used to return to coordination, which should be treated as higher-risk under uncertain timing/latency. See coordination and transition guidance in FHWA Signal Timing Manual Chapter 6 ([`FHWA Signal Timing Manual — Chapter 6`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter6.htm:1)).
 
 Use a simple budget table:
 
@@ -99,7 +99,7 @@ Use a simple budget table:
 ---
 
 ## Flash vs fixed safe operation (decision tree)
-“Flash” is sometimes used as an operational mode, but it is not a universal safe fallback; agencies must follow local policy and ensure pedestrian and safety impacts are acceptable. See FHWA Signal Timing Manual Chapter 7 for context on timing plan development and considerations ([`FHWA Signal Timing Manual — Chapter 7`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm)).
+“Flash” is sometimes used as an operational mode, but it is not a universal safe fallback; agencies must follow local policy and ensure pedestrian and safety impacts are acceptable. See FHWA Signal Timing Manual Chapter 7 for context on timing plan development and considerations ([`FHWA Signal Timing Manual — Chapter 7`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm:1)).
 
 Use a decision tree rather than a blanket rule:
 
@@ -116,16 +116,55 @@ Operational caveat: if you cannot guarantee safe flash configuration and pedestr
 ---
 
 ## Recovery + anti-oscillation: state machine + reason codes
-Frequent switching is undesirable. FHWA’s coordination guidance emphasizes stability and documents transition methods used to return to coordination ([`FHWA Signal Timing Manual — Chapter 6`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter6.htm)).
+Frequent switching is undesirable. FHWA’s coordination guidance emphasizes stability and documents transition methods used to return to coordination ([`FHWA Signal Timing Manual — Chapter 6`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter6.htm:1)).
 
 Implement a minimal, auditable state machine with hysteresis.
 
-### States
-- `NORMAL`: full optimization permitted.
-- `DEGRADED`: optimization bounded; only slow decisions; limited transitions.
-- `FALLBACK`: local conservative plan; central influence disabled.
-- `ISOLATED`: comms absent; controller autonomous.
-- `RECOVERY_VERIFY`: observation period before returning to `NORMAL`.
+### Mode state machine diagram (required visual: modes with staleness gates)
+
+```text
+                 +---------+
+   good feeds    | NORMAL  |
+ (FRESH/healthy) +---------+
+        ^             |
+        |             | critical feed DELAYED > X
+        |             v
+        |        +-----------+
+        |        | DEGRADED  |
+        |        +-----------+
+        |           |      \
+        |           |       \ critical feed STALE/UNTRUSTED > Y
+        |           |        v
+        |           |   +-----------+
+        |           |   | FALLBACK  |<-----------------+
+        |           |   +-----------+                  |
+        |           |        |                         |
+        |  comms ok |        | comms lost              |
+        |  time sync|        v                         |
+        |   healthy |   +-----------+                  |
+        |           |   | ISOLATED  |                  |
+        |           |   +-----------+                  |
+        |           |        |                         |
+        |           +--------+                         |
+        |      (good_for >= recovery_window           |
+        |       & dwell met)                          |
+        |                  v                          |
+        |            +----------------+               |
+        +------------| RECOVERY_VERIFY |--------------+
+                     +----------------+
+                           |
+             good_for >= recovery_window
+                           v
+                        +---------+
+                        | NORMAL  |
+                        +---------+
+```
+
+- Staleness gates:
+  - FRESH/healthy feeds keep the system in `NORMAL`.
+  - Critical feeds in `DELAYED` move to `DEGRADED` after `X` seconds.
+  - Critical feeds in `STALE/UNTRUSTED` move to `FALLBACK` or `ISOLATED`.
+  - Only after a **recovery window** of good health and minimum dwell can the system re-enter `NORMAL` via `RECOVERY_VERIFY`.
 
 ### Timers (starting defaults)
 - `min_dwell_degraded = 10 min`
@@ -185,9 +224,9 @@ Plausibility checks should be layered, cheap, and designed for **low false posit
 ATSPM guidance includes concrete “watchdog-style” checks that can be repurposed as triggers.
 
 Examples from FHWA ATSPM Use Cases (Chapter 4):
-- Flag a **possible communications issue** if an approach has “less than 500 records” per day in high-resolution data ([`FHWA ATSPM Use Cases — Chapter 4`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
-- Flag a **split failure pattern** if a movement has **>90% force-offs/max-outs between 1–5 AM** ([`FHWA ATSPM Use Cases — Chapter 4`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
-- Flag a **stuck pedestrian button** if there are **>200 pedestrian actuations between 1–5 AM** ([`FHWA ATSPM Use Cases — Chapter 4`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+- Flag a **possible communications issue** if an approach has “less than 500 records” per day in high-resolution data ([`FHWA ATSPM Use Cases — Chapter 4`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm:1)).
+- Flag a **split failure pattern** if a movement has **>90% force-offs/max-outs between 1–5 AM** ([`FHWA ATSPM Use Cases — Chapter 4`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm:1)).
+- Flag a **stuck pedestrian button** if there are **>200 pedestrian actuations between 1–5 AM** ([`FHWA ATSPM Use Cases — Chapter 4`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm:1)).
 
 ### How checks bound control actions
 - Failed plausibility → classify feed as **UNTRUSTED**.
@@ -205,7 +244,7 @@ Examples from FHWA ATSPM Use Cases (Chapter 4):
 - `operator_override` (who/when/why)
 
 ### Security/OT hardening tie-in
-For control environments, CISA recommends practices such as maintaining and testing an incident response plan, using a risk-based defense-in-depth approach, and utilizing network segmentation/DMZs, hardening remote access, and avoiding persistent remote connections into control networks ([`CISA ICS Cybersecurity Practices`](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf)).
+For control environments, CISA recommends practices such as maintaining and testing an incident response plan, using a risk-based defense-in-depth approach, and utilizing network segmentation/DMZs, hardening remote access, and avoiding persistent remote connections into control networks ([`CISA ICS Cybersecurity Practices`](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf:1)).
 
 ---
 
@@ -252,7 +291,7 @@ The agency should roll out delay-tolerant operation corridor-by-corridor, priori
 - **Acceptance checks**: mode events decrease over time as infrastructure improves, and fallback plans remain current and validated.
 
 ### Plan maintenance cadence (governance tie-in)
-The Signal Timing Manual recommends reviewing signal timing on a regular cycle (often cited as every 3–5 years depending on change rates), which applies to maintaining fallback plan libraries so they remain safe and representative ([`FHWA Signal Timing Manual — Chapter 7`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm)).
+The Signal Timing Manual recommends reviewing signal timing on a regular cycle (often cited as every 3–5 years depending on change rates), which applies to maintaining fallback plan libraries so they remain safe and representative ([`FHWA Signal Timing Manual — Chapter 7`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm:1)).
 
 ---
 
@@ -335,13 +374,13 @@ Keep service predictable while protecting safety invariants.
 ### Change control
 - Version fallback plan library; require peer review + field validation before activation.
 - Record changes to thresholds/state machine (who/why/test evidence).
-- Test patches/configs offline where feasible (mirrors OT practice recommendations) ([`CISA ICS Cybersecurity Practices`](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf)).
+- Test patches/configs offline where feasible (mirrors OT practice recommendations) ([`CISA ICS Cybersecurity Practices`](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf:1)).
 
 ### Cadence
 - Weekly: review top mode-event intersections, watchdog anomalies.
 - Monthly: validate fallback plan library against construction/geometry changes.
 - Quarterly: audit mode-event logs and false-trigger rates; update thresholds.
-- Every 3–5 years (or sooner with change): timing review/retiming cycle ([`FHWA Signal Timing Manual — Chapter 7`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm)).
+- Every 3–5 years (or sooner with change): timing review/retiming cycle ([`FHWA Signal Timing Manual — Chapter 7`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm:1)).
 
 ### KPIs
 - Mode-event rate per intersection/corridor (and trend).
@@ -349,16 +388,27 @@ Keep service predictable while protecting safety invariants.
 - Mean time to recover to `NORMAL` without flapping.
 - Thrash rate: mode flips/hour (lockout triggers).
 - False trigger rate (shadow mode and production).
-- ATSPM watchdog anomaly counts (comms, split failures, stuck ped) ([`FHWA ATSPM Use Cases — Chapter 4`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+- ATSPM watchdog anomaly counts (comms, split failures, stuck ped) ([`FHWA ATSPM Use Cases — Chapter 4`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm:1)).
 
 ---
 
 ## Reference Links
 - [`FHWA ATSPM (overview)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm)
-- [`FHWA ATSPM Use Cases — Chapter 4`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)
-- [`FHWA Signal Timing Manual — Chapter 6`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter6.htm)
-- [`FHWA Signal Timing Manual — Chapter 7`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm)
-- [`CISA ICS Cybersecurity Practices`](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf)
+- [`FHWA ATSPM Use Cases — Chapter 4`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm:1)
+- [`FHWA Signal Timing Manual — Chapter 6`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter6.htm:1)
+- [`FHWA Signal Timing Manual — Chapter 7`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm:1)
+- [`CISA ICS Cybersecurity Practices`](https://www.cisa.gov/sites/default/files/publications/Cybersecurity_Best_Practices_for_Industrial_Control_Systems.pdf:1)
+
+---
+
+## Completion Checklist
+- ✅ Clear differentiation from self-healing and interface boundaries: see **“What this is not…”**.
+- ✅ Staleness semantics + latency budgets + authority rules: see **“Staleness Contract”** and **“Latency budgets by control type”**.
+- ✅ Flash vs fixed constraints + decision tree: see **“Flash vs fixed safe operation”**.
+- ✅ Recovery/anti-oscillation thresholds + **state machine diagram with staleness gates**: see **“Recovery + anti-oscillation…”**.
+- ✅ Plausibility checks for wrong/spoofed data + low false-positive design + forensic logging: see **“Plausibility checks…”**.
+- ✅ Governance: ownership, review cadence, KPIs: see **“Governance / Maintenance Runbook”**.
+- ✅ Required visuals present: **per-feed staleness table** and **mode state machine diagram**.
 
 ---
 

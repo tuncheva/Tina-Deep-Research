@@ -10,7 +10,7 @@ When a crowd shows up, the intersection should behave like a good event coordina
 - **Leading Pedestrian Interval (LPI)**: pedestrians get a head start before turning vehicles (often **3–7 seconds**). See FHWA’s LPI proven safety countermeasure fact sheet. ([FHWA LPI fact sheet](https://highways.dot.gov/sites/fhwa.dot.gov/files/2022-06/04_Leading%20Pedestrian%20Interval_508.pdf:1))
 - **Exclusive pedestrian phase (“scramble”)**: all vehicle approaches stop while pedestrians cross (optionally including diagonal crossings). ([LADOT Exclusive Pedestrian Phase guide](https://ladot.lacity.gov/sites/default/files/2022-08/exclusive-pedestrian-phase-policy-design-guide-final-2017.pdf:1))
 
-A crowd is estimated from sensors (video, radar, thermal, lidar, pushbutton analytics), and the system chooses a strategy **under strict safety and accessibility constraints**, using analysis/simulation (“twin”) to pre-test impacts on:
+A crowd is estimated from sensors (video, radar, thermal, lidar, pushbutton analytics), and the system chooses a strategy **under strict safety, accessibility, privacy, and stability constraints**, using analysis/simulation (“twin”) to pre-test impacts on:
 
 - pedestrian-vehicle conflicts,
 - pedestrian delay and queue spillback onto sidewalks,
@@ -52,6 +52,8 @@ One practical screening approach (from LADOT policy guidance) is to consider an 
 - there is a pattern of pedestrian crashes involving turning vehicles (e.g., **≥3 crashes in 3 years**),
 - operational constraints (queues, rail preemption, freeway ramp spillback) do not make an all-stop vehicular interval unsafe/unworkable.
 
+### Geometry-based site selection checklist (scramble eligibility and pilot archetypes)
+
 **Geometry-based checklist for scramble suitability** (adapted from typical agency practice and guidance on exclusive phases and accessibility ([LADOT guide](https://ladot.lacity.gov/sites/default/files/2022-08/exclusive-pedestrian-phase-policy-design-guide-final-2017.pdf:1), [PROWAG](https://www.access-board.gov/prowag/complete.html:1))):
 
 - Crosswalks are clearly marked and continuous, with curb ramps aligned to crossings.
@@ -59,6 +61,8 @@ One practical screening approach (from LADOT policy guidance) is to consider an 
 - Sight distance for all approaches is adequate for drivers and pedestrians.
 - APS equipment can be configured to clearly indicate WALK and clearance intervals for all crossing movements (including diagonal if provided).
 - Pedestrian storage areas (corners, medians) are large enough to accommodate expected queues without forcing people into the roadway.
+- No critical geometric constraints (e.g., skew angles, complex slip lanes) that would make scramble indications hard to understand without redesign.
+- Space for any **turn restriction signing** and curb/approach treatments needed to support exclusive operation.
 
 **Recommended pilot archetypes**
 
@@ -124,15 +128,27 @@ Minimum functional requirements:
 - **Arrival rate**: pedestrians/min by approach to detect surges.
 - **Crosswalk occupancy**: % of cycle crosswalk is occupied (helpful for scramble/LPI tuning).
 - **Confidence / data quality**: sensor health, recent calibration, and data freshness.
+- **Optional classification**: crowd vs. sparse conditions (and, if available, basic grouping like adult/child mix or mobility devices) **only at aggregate level**, never identity-level.
 
 ### Performance targets (to configure and monitor)
 
-Agencies should define targets consistent with how they manage other detection systems:
+Agencies should define targets consistent with how they manage other detection systems, with explicit **precision/recall** and **latency** expectations:
 
 - **Detection latency**: crowd classification available within **1–2 cycles** during surge windows.
+- **Recall for surge detection** (fraction of true surge periods correctly identified): target e.g. ≥90% in defined evaluation windows.
+- **Precision for surge detection** (fraction of detected surges that are real): target e.g. ≥80% to avoid oscillation and driver confusion.
 - **Missed detection rate**: acceptable fraction of surge events that are missed (e.g., target <10% for defined surge levels; agency to set).
-- **False surge rate**: acceptable rate of false "surge" flags to avoid oscillation and driver confusion.
-- **Uptime and data quality**: thresholds for when automation must fall back to fixed behavior (e.g., if confidence is low for >N minutes).
+- **False surge rate**: acceptable rate of false "surge" flags; set both per-hour and per-event caps.
+- **Uptime and data quality**: thresholds for when automation must fall back to fixed behavior (e.g., if confidence is low or stale for >N minutes).
+
+### Uncertainty handling
+
+- Every decision that uses sensor data should incorporate a **confidence score** (e.g., low/medium/high) and **data age**.
+- Mode-switch logic should:
+  - Require **high-confidence** observations (or corroborating sensors) to escalate to scramble.
+  - Allow **medium-confidence** observations to trigger LPI or ped recall only.
+  - Treat **low-confidence** or stale data as a reason to *not escalate* and/or revert to baseline.
+- For analytics, track detection performance by lighting/weather conditions and time of day to detect systematic degradation.
 
 ### Outage and low-confidence fallbacks
 
@@ -176,6 +192,82 @@ Use established timing practice:
 
 ---
 
+## Modes and state diagram (required visual)
+
+We assume three primary **operational modes**:
+
+- **BASELINE**: concurrent ped phases, possibly with static LPI where already approved.
+- **LPI_SURGE**: dynamic LPI emphasis with ped recall during surge windows.
+- **SCRAMBLE_SURGE**: exclusive pedestrian phase (with or without diagonal) for intense surges at suitable sites.
+
+### State diagram: baseline / LPI / scramble with switch conditions, dwell, hysteresis (required visual)
+
+```text
+             [ BASELINE ]  (concurrent, no dynamic surge logic)
+                  |
+      (crowd_level ≥ 2 AND
+       detection confidence high
+       for ≥ N cycles; turning
+       conflicts present)
+                  |  ENTER_LPI_SURGE
+                  v
+            [ LPI_SURGE ]
+   (LPI active; ped recall during
+        surge window)
+                  |
+      (crowd_level ≥ 3 AND
+       site passes scramble
+       geometry & safety
+       checklist; queue caps
+       at boundaries respected;
+       persistence ≥ M cycles)
+                  |  ENTER_SCRAMBLE_SURGE
+                  v
+        [ SCRAMBLE_SURGE ]
+  (exclusive ped phase during
+      configured surge window)
+                  |
+   (surge dissipates: crowd_level
+    ≤ 1 for T1 minutes AND
+    vehicle queues at or below
+    caps; dwell in SCRAMBLE
+    completed; no active event
+    egress override)
+                  |  EXIT_SCRAMBLE → LPI_SURGE
+                  v
+            [ LPI_SURGE ]
+                  |
+   (crowd_level ≤ 1 for T2
+    minutes AND no active
+    event window AND stability
+    timer complete)
+                  |  EXIT_LPI_SURGE → BASELINE
+                  v
+             [ BASELINE ]
+
+Guardrails:
+- Minimum dwell per mode (e.g., ≥K cycles) before allowing transition.
+- Hysteresis: higher thresholds to enter than to stay; lower thresholds to exit.
+- Max switches/hour (e.g., no more than X mode changes per hour).
+- If detection confidence drops mid-state → finish current cycle safely, then
+  follow fallback arrow to BASELINE or pre-approved EVENT plan.
+```
+
+---
+
+## Mode catalog (required visual: table)
+
+### Mode → prerequisites → benefits → risks → constraints → fallback
+
+| Mode                | Prerequisites | Benefits | Risks | Key constraints | Fallback when not met / failure detected |
+|---------------------|--------------|----------|-------|-----------------|-----------------------------------------|
+| **BASELINE** (concurrent, no special surge logic beyond standard timing) | Standard geometry; compliant ped timings; no active event window; crowd_level mostly 0–1 | Simple, predictable operation; best for off-peak; preserves progression | May under-serve pedestrians during surges; higher exposure to turning conflicts | Must meet MUTCD/PROWAG timing; APS configured correctly; vehicle queues within planned limits | If baseline cannot safely handle persistent surges, promote site to LPI_SURGE or SCRAMBLE_SURGE per screening; if detection fails, remain in baseline with conservative ped timings |
+| **LPI_SURGE** (dynamic LPI + ped recall) | Turning conflicts present; detection capable of identifying surges with sufficient precision/recall; APS support for LPI; geometry acceptable for concurrent crossings | Reduces turning conflicts; improves ped start-up; often manageable impact on progression | If mis-tuned, can lengthen cycle, cause vehicle queues, or confuse users if on/off frequently | Minimum LPI duration per guidance; dwell times and hysteresis; vehicle queue caps; APS and signing clearly indicate behavior | If sensor confidence low or queue caps exceeded, fall back to BASELINE or fixed LPI schedule; if complaints/confusion high, revert and revise thresholds/signing |
+| **SCRAMBLE_SURGE** (exclusive ped phase) | Site passes geometry/accessibility checklist; high ped + high turning volumes; documented crash pattern; event or recurrent surge window; clear signing and APS configuration | Maximum reduction in turning conflicts; very clear ped priority during bursts | Increased vehicle delay and potential spillback; progression degradation; risk if signing or APS unclear | Strict ped timing and APS configuration; turn restrictions (e.g., NO TURN ON RED) where needed; caps on frequency/duration; coordination with adjacent network | If boundary queues exceed caps or coordination is severely degraded, step down to LPI_SURGE; if detection fails, use scheduled scramble windows only or revert to LPI/baseline; if accessibility issue found, disable scramble until corrected |
+| **EVENT_PLAN** (pre-approved event-specific timing with fixed ped priority windows) | Event schedule loaded; pre-validated plan (with safety/accessibility review); operators trained; coordination with TMC | Predictable behavior for recurring events; easier outreach; avoids ad-hoc tuning | May be misaligned with actual attendance; if used outside true events, may cause unnecessary delay | Activated only within defined event windows; clear governance on when/who can activate; APS and signing consistent | If event cancelled/low attendance, revert to BASELINE or LPI_SURGE after short dwell; if incident conflicts with plan, operators may temporarily disable event timing and use manual control |
+
+---
+
 ## Dynamic strategy selection (decision tree)
 
 ### Decision goal
@@ -184,24 +276,27 @@ Select the *least disruptive* strategy that achieves safety and surge handling w
 ### Decision tree (operational)
 
 1. **Is sensing confidence low?**
-   - Yes → use **safe default plan** (usually baseline concurrent + conservative ped timings; optionally fixed LPI if historically beneficial) and alert operations.
+   - Yes → use **safe default plan** (usually BASELINE concurrent + conservative ped timings; optionally fixed LPI if historically beneficial) and alert operations.
    - No → continue.
 
-2. **Are turning conflicts likely high?** (turning volumes high, multiple legs, poor yielding, history)
-   - Yes → prefer **LPI** as first escalation.
+2. **Are turning conflicts likely high?** (turning volumes high, multiple legs, poor yielding, crash history)
+   - Yes → prefer **LPI_SURGE** as first escalation.
 
 3. **Is there a surge?** (queue and/or arrival rate beyond threshold)
-   - No → baseline concurrent (optionally LPI if always-on PSC).
+   - No → BASELINE (optionally static LPI if always-on PSC).
    - Yes → continue.
 
-4. **Will LPI alone handle the surge without exceeding vehicle queue caps?**
-   - Yes → **LPI mode**.
+4. **Will LPI alone handle the surge without exceeding vehicle queue caps or destroying progression?**
+   - Yes → **LPI_SURGE** mode.
    - No → continue.
 
 5. **Does the site meet exclusive phase suitability?**
    - Use LADOT-style screening (high ped, high turning across multiple legs, crash pattern, no disqualifying constraints). ([LADOT Exclusive Pedestrian Phase guide](https://ladot.lacity.gov/sites/default/files/2022-08/exclusive-pedestrian-phase-policy-design-guide-final-2017.pdf:1))
-   - If yes → **exclusive pedestrian phase** during surge window.
+   - If yes → **SCRAMBLE_SURGE** during surge window (or use EVENT_PLAN with pre-approved scramble intervals).
    - If no → **conservative LPI + ped recall** (serve pedestrians every cycle during surge) and consider geometric/turning restrictions.
+
+6. **Is an event window active?** (see coordination section)
+   - If active and crowd_level high near gates, event egress safety overrides otherwise tight progression; use SCRAMBLE_SURGE or EVENT_PLAN if safe/eligible.
 
 ---
 
@@ -211,14 +306,15 @@ Select the *least disruptive* strategy that achieves safety and surge handling w
 
 - Maintain pedestrian minimums and clearance calculations. ([MUTCD 2009 Part 4, Chapter 4E](https://mutcd.fhwa.dot.gov/htm/2009/part4/part4e.htm:1))
 - Use established ped timing computation guidance. ([FHWA Traffic Signal Timing Manual, Ch. 5](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter5.htm:1))
-- In scramble mode, stop conflicting vehicular movements and enforce turning restrictions (e.g., “NO TURN ON RED” where required by local policy). ([LADOT Exclusive Pedestrian Phase guide](https://ladot.lacity.gov/sites/default/files/2022-08/exclusive-pedestrian-phase-policy-design-guide-final-2017.pdf:1))
+- In scramble mode, stop conflicting vehicular movements and enforce turning restrictions (e.g., “NO TURN ON RED” where required by local policy). ([LADOT guide](https://ladot.lacity.gov/sites/default/files/2022-08/exclusive-pedestrian-phase-policy-design-guide-final-2017.pdf:1))
+- Do **not** reduce ped clearance times to compensate for added LPI or scramble unless geometry changes and accessibility reviews explicitly justify different assumptions.
 
 ### Stability features (mode-switch guardrails)
 
 - **Hysteresis:** different thresholds to enter vs. exit surge mode.
 - **Minimum dwell time:** keep a chosen strategy for at least N cycles.
 - **Rate limit:** max 1 mode change per M minutes.
-- **Degradation handling:** if confidence drops mid-surge, finish current cycle safely and fall back.
+- **Degradation handling:** if confidence drops mid-surge, finish current cycle safely and fall back per state diagram.
 - **Consistency and signage:** ensure that any change in basic operation (e.g., adding scramble) is accompanied by appropriate signing and, if needed, public communications, consistent with MUTCD expectations for clarity and legibility of indications. ([MUTCD Part 1 & 4](https://mutcd.fhwa.dot.gov/htm/2009/part1/part1.htm:1))
 
 ---
@@ -239,9 +335,11 @@ Select the *least disruptive* strategy that achieves safety and surge handling w
   - Provide clear static or dynamic signing for exclusive phases (e.g., "All-Way Walk" or equivalent, plus turn restrictions) consistent with MUTCD.[^mutcd1]
   - For recurring event sites, use outreach and consistent messages so users learn the pattern.
 
-- **Compliance monitoring:**
-  - Track proxies such as late crossings, violations during DO NOT WALK, driver yielding observations, and complaints.
-  - Use before/after and periodic checks in line with traditional observational studies recommended in safety programs.
+- **Compliance monitoring & complaint plan:**
+  - Track proxies such as late crossings, violations during DON’T WALK, driver yielding observations, and complaints.
+  - Maintain a log of **complaint themes** (e.g., confusing indications, excessive wait, accessibility concerns) and relate them to sites/modes.
+  - Periodically conduct **field observation studies** (e.g., once per quarter per pilot) to compare observed compliance with expectations.
+  - Use findings to adjust thresholds, signage, and communications.
 
 [^mutcd1]: MUTCD emphasizes clear and uniform meaning for traffic control devices to support road user comprehension and compliance. ([MUTCD 2009 Intro & Part 1](https://mutcd.fhwa.dot.gov/htm/2009/part1/part1.htm:1))
 
@@ -302,6 +400,45 @@ For each pilot site:
 
 ---
 
+## Privacy-by-design for crowd-smart sensing
+
+Following public-sector video and sensor policy recommendations, focus on **purpose limitation, data minimization, and governance** ([DHS VQiPS](https://www.dhs.gov/sites/default/files/publications/Policy_Considerations_for_the_Use_of_Video_in_Public_Safety_Final_v5.pdf:1)):
+
+### Edge processing and output minimization
+
+- Prefer architectures where cameras or sensors produce **counts/queues/occupancy** rather than raw video streams.
+- Only store derived metrics needed for operations and evaluation.
+- Keep any necessary raw imagery **on the edge device** where possible, with tightly controlled access.
+
+### Retention defaults
+
+- Short retention for raw imagery (if recorded at all), consistent with agency video policy.
+- Longer retention for aggregate metrics and decision logs, aligned with general records schedules for traffic operations.
+
+### "No-go" analytics list and exception approvals
+
+- Explicitly prohibit:
+  - identity recognition or tracking of individuals,
+  - linking crossing data to personal identifiers,
+  - non-transportation uses without separate approval.
+- If exceptions are requested (e.g., temporary higher-resolution recording for a safety study), require:
+  - documented purpose,
+  - time-bounded approval,
+  - defined retention and deletion plan.
+
+### Audits and transparency template
+
+- Periodically review sensor deployments for compliance with policy.
+- Publish a **plain-language summary** that describes:
+  - where crowd-smart crossings are deployed,
+  - what is measured (counts, queues, not identities),
+  - retention practices,
+  - how the public can raise concerns.
+
+These elements align with the policy topics identified in DHS’s public safety video guidance (notice, retention, access, analytics, governance). ([DHS VQiPS](https://www.dhs.gov/sites/default/files/publications/Policy_Considerations_for_the_Use_of_Video_in_Public_Safety_Final_v5.pdf:1))
+
+---
+
 ## Metrics and success criteria
 
 ### Safety and compliance
@@ -330,11 +467,11 @@ For each pilot site:
 
 ---
 
-## Coordination and event conflict resolution
+## Coordination and event-mode integration
 
 Dynamic pedestrian modes affect cycle length, offsets, and progression. Agencies already consider such tradeoffs when introducing exclusive pedestrian phases or LPI treatments; similar coordination principles apply here ([FHWA Timing Manual](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter5.htm:1), [LADOT guide](https://ladot.lacity.gov/sites/default/files/2022-08/exclusive-pedestrian-phase-policy-design-guide-final-2017.pdf:1)).
 
-### Coordination impacts
+### Corridor coordination impacts
 
 - **Cycle length**: exclusive phases and long LPI may lengthen the effective cycle or compress green for vehicles.
 - **Offsets**: frequent unscheduled exclusive phases can disturb progression; therefore:
@@ -404,7 +541,7 @@ Privacy note: if using video analytics, build policy and governance up front (no
 
 ### Phase 3: Strategy selection logic, guardrails, and twin validation (Weeks 13–20)
 
-Define switching thresholds for baseline/LPI/scramble; validate with analysis/simulation.
+Define switching thresholds for BASELINE/LPI_SURGE/SCRAMBLE_SURGE; validate with analysis/simulation.
 
 Deliverables:
 
@@ -441,18 +578,19 @@ Deliverables:
 
 - [ ] Confirm controller supports LPI and (if needed) exclusive pedestrian phase sequencing.
 - [ ] Verify existing ped timings comply with guidance (walk, clearance, buffer). ([MUTCD 2009 Part 4, Chapter 4E](https://mutcd.fhwa.dot.gov/htm/2009/part4/part4e.htm:1))
-- [ ] Compute/validate ped clearance using distance and walking speed assumption; document exceptions for slower populations. ([FHWA Traffic Signal Timing Manual, Ch. 5](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter5.htm:1))
-- [ ] Validate APS requirements and configurations for all modes (baseline/LPI/scramble). ([PROWAG](https://www.access-board.gov/prowag/complete.html:1))
+- [ ] Compute/validate ped clearance using distance and walking speed assumption; document exceptions for slower populations. ([FHWA Timing Manual, Ch. 5](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter5.htm:1))
+- [ ] Validate APS requirements and configurations for all modes (BASELINE/LPI_SURGE/SCRAMBLE_SURGE). ([PROWAG](https://www.access-board.gov/prowag/complete.html:1))
 - [ ] Define mode thresholds + hysteresis + dwell times; test on recorded data.
-- [ ] Define vehicle queue caps and spillback monitors.
+- [ ] Define vehicle queue caps and spillback monitors (including event egress boundaries).
 - [ ] Implement safe fallback for low-confidence sensing and document behavior.
-- [ ] Implement audit logging for all parameter changes and mode switches.
-- [ ] Document detection performance targets and QA processes.
+- [ ] Implement audit logging for all parameter changes and mode switches, including reason codes.
+- [ ] Document detection performance targets (precision/recall/latency) and QA processes.
 - [ ] Run tabletop scenario review (sensor outage, false surge, special event, emergency preemption).
+- [ ] Obtain stakeholder sign-off on accessibility and privacy plan for each pilot site.
 
 ---
 
-## Operations Runbook (SOP)
+## Operations SOP (Runbook)
 
 ### Normal operations
 
@@ -483,7 +621,7 @@ Deliverables:
   - If persistent, disable dynamic scramble at that site and log reason.
 
 - **If queue spillback risk occurs:**
-  - Disable exclusive phase and revert to LPI/baseline.
+  - Disable exclusive phase and revert to LPI_SURGE/BASELINE.
   - Consider restricting turns or adding protected-only turns (engineering change).
 
 - **If APS or accessibility issue is reported:**
@@ -499,40 +637,24 @@ Deliverables:
 - Maintain an APS configuration inventory and test plan for each intersection.
 - Validate that APS messages/indications remain correct under LPI and exclusive phases (PROWAG requirements for APS features and timing). ([PROWAG](https://www.access-board.gov/prowag/complete.html:1))
 - Include accessibility staff and disability advocates in pilot site selection and post-implementation reviews.
+- Document a **disparity check** at least annually:
+  - compare ped delay and clearance compliance by leg and by time-of-day,
+  - highlight legs serving equity-priority communities,
+  - record mitigations or follow-up actions.
 
 ### Privacy minimization for sensing
 
-Following public-sector video and sensor policy recommendations, focus on **purpose limitation, data minimization, and governance** ([DHS VQiPS](https://www.dhs.gov/sites/default/files/publications/Policy_Considerations_for_the_Use_of_Video_in_Public_Safety_Final_v5.pdf:1)):
-
-- **Edge processing and output minimization**
-  - Prefer architectures where cameras or sensors produce **counts/queues/occupancy** rather than raw video streams.
-  - Only store derived metrics needed for operations and evaluation.
-
-- **Retention defaults**
-  - Short retention for raw imagery (if recorded at all), consistent with agency video policy.
-  - Longer retention for aggregate metrics and decision logs, aligned with general records schedules for traffic operations.
-
-- **No-go analytics list**
-  - Explicitly prohibit:
-    - identity recognition or tracking of individuals,
-    - linking crossing data to personal identifiers,
-    - non-transportation uses without separate approval.
-
-- **Exception approvals**
-  - If exceptions are requested (e.g., temporary higher-resolution recording for a safety study), require:
-    - documented purpose,
-    - time-bounded approval,
-    - defined retention and deletion plan.
-
-- **Audits and transparency template**
-  - Periodically review sensor deployments for compliance with policy.
-  - Publish a **plain-language summary** that describes:
-    - where crowd-smart crossings are deployed,
-    - what is measured (counts, queues, not identities),
-    - retention practices,
-    - how the public can raise concerns.
-
-These elements align with the policy topics identified in DHS’s public safety video guidance (notice, retention, access, analytics, governance). ([DHS VQiPS](https://www.dhs.gov/sites/default/files/publications/Policy_Considerations_for_the_Use_of_Video_in_Public_Safety_Final_v5.pdf:1))
+- Follow the privacy-by-design practices in **"Privacy-by-design for crowd-smart sensing"** above.
+- Maintain a **register of sensor types and locations**, including:
+  - purpose,
+  - data captured,
+  - retention/purging rules,
+  - contact point for questions.
+- For each pilot, maintain a short **privacy impact note** summarizing:
+  - what is measured,
+  - what is explicitly not measured (no identities),
+  - retention defaults,
+  - governance and oversight.
 
 ---
 
@@ -550,12 +672,13 @@ These elements align with the policy topics identified in DHS’s public safety 
 
 ## Completion checklist (✅/⚠️)
 
-- ✅ Detection requirements, performance targets, and fallbacks: see **"Detection requirements and fallbacks"**.
-- ✅ Compliance + human factors (mode guardrails, signage, reason codes, compliance metrics): see **"Control logic: guardrails and anti-oscillation"** and **"Compliance, human factors, and operator explainability"**.
-- ✅ Accessibility + equity (APS, bias risks, field validation, metrics): see **"Accessibility and equity"**.
-- ✅ Privacy minimization (edge counting, retention defaults, no-go list, audits/transparency): see **"Accessibility & Privacy Governance Runbook"**.
-- ✅ Geometry-based site selection & pilot archetypes: see **"When to use (site selection)"**.
-- ✅ Coordination + event conflict resolution (offset/cycle impacts, recovery, hierarchy, decision tree): see **"Coordination and event conflict resolution"**.
+- ✅ Detection requirements, performance targets (including precision/recall/latency), uncertainty handling, and fallbacks: see **"Detection requirements and fallbacks"**.
+- ✅ Compliance + human factors (mode guardrails, signage, reason codes, complaint/compliance measurement plan): see **"Control logic: guardrails and anti-oscillation"** and **"Compliance, human factors, and operator explainability"**.
+- ✅ Accessibility + equity validation (APS consistency, bias risks, walkthrough/testing protocol, stakeholder sign-off, disparity checks): see **"Accessibility and equity"** and **"Accessibility & Privacy Governance Runbook"**.
+- ✅ Privacy-by-design (edge counting/output minimization, retention defaults, "no-go" list + exception approvals, audit and transparency template): see **"Privacy-by-design for crowd-smart sensing"** and **"Accessibility & Privacy Governance Runbook"**.
+- ✅ Geometry-based site selection, scramble-eligible criteria, site screening checklist, pilot archetypes: see **"When to use (site selection)"**.
+- ✅ Coordination + event-mode integration (corridor cycle/offset impacts, recovery rules, conflict-resolution hierarchy with event egress): see **"Coordination and event-mode integration"**.
+- ✅ Required visuals: state diagram for BASELINE/LPI/SCRAMBLE_SURGE and mode catalog table (Mode → prerequisites → benefits → risks → constraints → fallback): see **"Modes and state diagram"** and **"Mode catalog"**.
 - ⚠️ Local agency-specific numeric thresholds (exact queue caps, dwell times, surge definitions) are intentionally left for local calibration: see **"Detection requirements and fallbacks"** and **"Control logic: guardrails and anti-oscillation"**.
 
 ---

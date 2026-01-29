@@ -70,7 +70,7 @@ The agency should establish a recurring drill schedule (for example, quarterly) 
 - **Acceptance checks**: playbooks remain versioned and reviewed, and drills produce measurable improvements in activation time and execution quality.
 
 #### Phase 6: Maintenance, Recertification, and Expiry Controls (Ongoing)
-The agency should treat playbooks as living assets by adding an expiry date and review requirement to each one, because infrastructure changes frequently invalidate assumptions. The team should recertify playbooks after major construction, controller firmware changes, new transit routes, or policy updates, and it should maintain a “do not use” flag for expired playbooks that forces review before activation. Over time, the team should expand the library cautiously based on demonstrated operational value rather than attempting to cover every possible scenario.
+The agency should treat playbooks as living assets by adding an expiry date and review requirement to each one, because infrastructure changes frequently invalidate assumptions. The team should recertify playbooks after major construction, controller firmware changes, new transit routes, or policy updates, and it should maintain a "do not use" flag for expired playbooks that forces review before activation. Over time, the team should expand the library cautiously based on demonstrated operational value rather than attempting to cover every possible scenario.
 
 - **Roles**: program owner (expiry enforcement), traffic engineering (recertification), operations (feedback), IT/data (system maintenance).
 - **Deliverables**: playbook expiry system, annual recertification reports, and updated scenario coverage plan.
@@ -98,13 +98,49 @@ The agency should treat playbooks as living assets by adding an expiry date and 
 ## Implementation Additions (Implementation-Ready)
 
 ### 1) Trigger Design Framework (robust, observable, anti-false-activation)
+
 Rare events are chaotic and sensors are imperfect; triggers must be designed to be *observable*, *robust to noise*, and *hard to false-activate*.
 
 #### Trigger types
 - **Scheduled triggers (known events)**: event calendar/permit start–end time, stadium egress window, parade route schedule.
 - **Detected triggers (incident patterns)**: probe travel-time spike, detector occupancy/volume pattern, queue spillback proxies, sudden bus bunching.
-- **Declared triggers (partner notification)**: police/Fire/EMS/emergency management declares incident, detour, evacuation, venue operations calls “release”.
-- **Operator-confirmed triggers**: any automated recommendation remains “pending” until an operator confirms.
+- **Declared triggers (partner notification)**: police/Fire/EMS/emergency management declares incident, detour, evacuation, venue operations calls "release".
+- **Operator-confirmed triggers**: any automated recommendation remains "pending" until an operator confirms.
+
+#### Decision tree: activate → operate → unwind (required visual)
+
+```text
+[IDLE]
+  ↓  (trigger observed: scheduled / detected / declared)
+[PENDING]
+  - System computes confidence and checks persistence
+  - Operator reviews evidence + scope
+    ↓ if confidence < threshold OR sensors unhealthy
+    [REJECT]
+      - Log reason (data gap / false trigger / out of scope)
+      - Return to [IDLE]
+    ↓ if confidence ≥ threshold AND operator confirms
+[ACTIVATE]
+  - Select playbook + plan option (conservative/agg)
+  - Notify partners; execute field actions
+    ↓
+[OPERATE]
+  - Monitor KPIs + safety constraints
+  - Adhere to rate limits; adjust only within playbook bounds
+    ↓ if exit criteria met (KPIs back to normal / time window over)
+[UNWIND]
+  - Execute recovery plan (return to normal coord / post-event mode)
+  - Confirm ped mins and preemption behavior
+  - Notify partners of mode change
+    ↓
+[AFTER-ACTION]
+  - Capture metrics + timeline
+  - Run AAR; propose playbook updates
+    ↓
+[IDLE]
+```
+
+This decision tree is the core **activate → operate → unwind** flow that all rare-event playbooks must follow.
 
 #### Robust trigger design rules
 Use a state-machine with confidence and persistence:
@@ -114,7 +150,7 @@ Use a state-machine with confidence and persistence:
 - **Confidence scoring**: compute `confidence ∈ [0,1]` from weighted evidence; require a threshold to move states.
 - **Minimum persistence**: condition must hold for `T_persist` (e.g., 3–5 min) before activation.
 - **Hysteresis**: activation threshold `θ_on` > deactivation threshold `θ_off` to avoid oscillation.
-- **Debounce / rate limiting**: no more than 1 mode change per corridor per `T_debounce` (e.g., 10–15 min), plus global “circuit breaker”.
+- **Debounce / rate limiting**: no more than 1 mode change per corridor per `T_debounce` (e.g., 10–15 min), plus global "circuit breaker".
 - **Thresholds vs anomaly detection**:
   - Use **thresholds** where baseline is stable and operational intent is clear (e.g., occupancy > 25% for 5 min at a known bottleneck).
   - Use **anomaly detection** where day-to-day variance is large or you want *earlier warning* (e.g., travel-time z-score vs typical day-of-week/time-of-day). Require stricter operator confirmation for anomaly triggers.
@@ -122,12 +158,13 @@ Use a state-machine with confidence and persistence:
 #### False activation handling
 - **Pending state**: all detected triggers first enter `PENDING` and require operator confirmation unless the scenario is explicitly approved for auto-activation.
 - **Auto-expire**: pending recommendations expire after `T_pending_max` (e.g., 10 min) unless confirmed.
-- **Rollback contract**: every activation must have explicit exit criteria and an “undo” plan; enforce a max duration (`T_max`) after which the system re-prompts for renew/rollback.
+- **Rollback contract**: every activation must have explicit exit criteria and an "undo" plan; enforce a max duration (`T_max`) after which the system re-prompts for renew/rollback.
 - **Logging + postmortem**:
   - Log signals, computed confidence, who confirmed, and observed outcome.
   - Track false positives/negatives and tune triggers using after-action review.
 
 #### Trigger specification template (copy/paste)
+
 ```yaml
 trigger_id: "PSE-EGRESS-01"
 scenario: "Stadium egress outbound bias"
@@ -187,12 +224,25 @@ rollback:
     - "notify partners and log"
 ```
 
+#### Trigger spec table + example triggers (required visual)
+
+This table operationalizes the YAML template into a quick-reference **trigger spec chart**.
+
+| Trigger ID | Scenario | Type | Key data sources | Core activation logic | Persistence / hysteresis | Operator role | Example exit criteria |
+|---|---|---|---|---|---|---|---|
+| PSE-EGRESS-01 | Stadium egress outbound bias | Scheduled + detected | Event schedule; probe TT on outbound corridor; detector occupancy at bottleneck intersections | `(event_window == true) AND (probe_tt_zscore ≥ 2.0) AND (occ ≥ 0.25)` OR partner declaration | `must_hold_for = 5 min`; `debounce = 15 min`; `θ_on = 0.80`, `θ_off = 0.55` | Confirm PENDING; select conservative vs aggressive plan; notify partners | `probe_tt_zscore < 0.5 for 15 min` AND queues below spillback threshold OR hard `T_max = 120 min` |
+| DETOUR-MAJOR-01 | Major detour for bridge closure | Declared + detected | CAD/incident feed; lane-closure flags; probe TT on signed detour; local counts on parallel streets | `declared_closure == true` AND (detour_tt_zscore ≥ 1.5 OR closure_flag == true)` | `must_hold_for = 3 min`; `debounce = 20 min`; lower `θ_off` to stay in mode until stable | Confirm activation; verify detour signage; coordinate with police for control points | Lanes restored AND `detour_tt_zscore < 0.5` for 20 min; neighborhood counts under cut-through threshold |
+| TRANSIT-OUTAGE-01 | Rail outage → bus bridge detours | Declared + detected | Transit control declaration; AVL/RTPI bus delays; headway adherence | `transit_declared == true AND bus_headway_cv ≥ threshold` | `must_hold_for = 10 min`; `debounce = 30 min`; anomaly-based entry; operator must confirm | Confirm bus detour routes; ensure bus-priority corridor enabled | Rail service restored AND bus headways stable for 30 min OR `T_max = 240 min` |
+| EVAC-ROUTE-01 | Evacuation route clearance | Declared | Incident command declaration; optional probe/queue indicators | `evacuation_declared == true` (no auto-detected option) | Immediate activation on declaration; no auto-off; must be explicitly released | Execute evacuation playbook only on direction of incident command; maintain hard constraints | Command releases evacuation; staged rollback per playbook; verification of normal ops before idle |
+
 **Source alignment**: FHWA emphasizes that planned special events benefit from advanced information (location/time/duration/demand) and that advanced planning and coordination enable operational strategies, traffic control plans, protocols, and procedures shared with stakeholders ([`Planned Special Events Preparedness - FHWA`](https://ops.fhwa.dot.gov/tim/preparedness/pse/index.htm:1)).
 
 ### 2) Interagency Coordination + Communications (first-class playbook component)
-Planned special events and major incidents require agencies and stakeholders who “normally don’t work together” to coordinate before/during/after the event, with shared procedures and real-time information exchange ([`Planned Special Events Preparedness - FHWA`](https://ops.fhwa.dot.gov/tim/preparedness/pse/index.htm:1)).
+
+Planned special events and major incidents require agencies and stakeholders who "normally don’t work together" to coordinate before/during/after the event, with shared procedures and real-time information exchange ([`Planned Special Events Preparedness - FHWA`](https://ops.fhwa.dot.gov/tim/preparedness/pse/index.htm:1)).
 
 #### Partner map (typical) and roles
+
 | Partner | What they control | What signals ops needs from them | What they need from signals ops |
 |---|---|---|---|
 | Police / traffic enforcement | intersections manually controlled, lane closures, cones, on-street direction | control points, planned closures, release/hold of traffic, incident updates | recommended route priorities, timing plan status, bottlenecks |
@@ -204,6 +254,7 @@ Planned special events and major incidents require agencies and stakeholders who
 | Maintenance / field crews | signs, barricades, ITS devices | device status, ability to deploy | where/when to deploy assets |
 
 #### RACI for activation + comms + field actions
+
 | Task | TMC Operator | TMC Supervisor | Traffic Engineer On-Call | Police Liaison | Transit Liaison | PIO | Field Maintenance |
 |---|---|---|---|---|---|---|---|
 | Detect / receive trigger | R | A | C | C | C | I | I |
@@ -225,25 +276,27 @@ Planned special events and major incidents require agencies and stakeholders who
   - *From partners → signals ops*: closures, staging, detours, release times, evacuation boundaries.
   - *From signals ops → partners*: corridor status, plan activation/deactivation timestamps, expected outcomes, constraints (ped mins, emergency routes).
 
-**Source alignment**: WSDOT’s TSMO description of planned event/incident signal timing emphasizes coordination among event managers, traffic agencies, public transportation agencies, and law enforcement, and the use of a “common operating picture” for shared situational awareness ([`Planned event or incident signal timing | TSMO | WSDOT`](https://tsmowa.org/category/intelligent-transportation-systems/planned-event-or-incident-signal-timing:1)).
+**Source alignment**: WSDOT’s TSMO description of planned event/incident signal timing emphasizes coordination among event managers, traffic agencies, public transportation agencies, and law enforcement, and the use of a "common operating picture" for shared situational awareness ([`Planned event or incident signal timing | TSMO | WSDOT`](https://tsmowa.org/category/intelligent-transportation-systems/planned-event-or-incident-signal-timing:1)).
 
 ### 3) Equity + multimodal priority regimes during rare events
+
 Rare-event modes shift priorities. Make the shift explicit, pre-approved, and measurable.
 
 #### Priority regime by event type (policy table)
+
 | Event type | Primary objective | Typical priority order | Notes |
 |---|---|---|---|
-| Venue egress/ingress | life safety + pedestrian egress + prevent spillback | Ped safety/egress → transit access → emergency routes → general traffic | Protect crossings near venues/transit hubs first, then manage vehicle queues.
-| Incident diversion | keep network stable and avoid secondary crashes | emergency routes → diversion corridors → neighborhood protection | Avoid pushing cut-through into sensitive neighborhoods where feasible.
-| Transit disruption (rail outage) | maintain bus throughput and headways | transit corridors → ped access → emergency routes → general traffic | Pre-define detour signal priority corridors and stop relocations.
-| Evacuation / emergency | life safety + clearance time | evacuation routes → emergency response → ped safety → general traffic | May require contra-flow, staging routes; coordinate with emergency management.
-| Severe weather / degraded conditions | safety + maintain minimum mobility | safety constraints (ped mins, red clearance) → emergency routes → key arterials | Avoid frequent plan switching during unstable comms/power.
+| Venue egress/ingress | life safety + pedestrian egress + prevent spillback | Ped safety/egress → transit access → emergency routes → general traffic | Protect crossings near venues/transit hubs first, then manage vehicle queues. |
+| Incident diversion | keep network stable and avoid secondary crashes | emergency routes → diversion corridors → neighborhood protection | Avoid pushing cut-through into sensitive neighborhoods where feasible. |
+| Transit disruption (rail outage) | maintain bus throughput and headways | transit corridors → ped access → emergency routes → general traffic | Pre-define detour signal priority corridors and stop relocations. |
+| Evacuation / emergency | life safety + clearance time | evacuation routes → emergency response → ped safety → general traffic | May require contra-flow, staging routes; coordinate with emergency management. |
+| Severe weather / degraded conditions | safety + maintain minimum mobility | safety constraints (ped mins, red clearance) → emergency routes → key arterials | Avoid frequent plan switching during unstable comms/power. |
 
 #### Constraints/objectives examples (implementation-ready)
-- **Pedestrian protection**: enforce minimum walk intervals and conservative clearance near venues/schools; add “no permissive turn on flash” policies where required.
+- **Pedestrian protection**: enforce minimum walk intervals and conservative clearance near venues/schools; add "no permissive turn on flash" policies where required.
 - **Neighborhood cut-through protection** (when diversion is needed): cap green splits on residential collectors; keep speed/volume within acceptable limits; prefer signed diversion routes.
 - **Bus-priority corridors**: grant conditional TSP (transit signal priority) on designated detours; protect headways by limiting max red for bus approaches.
-- **Emergency/hospital access**: maintain “never degrade” routes and intersections; treat as hard constraint in playbooks.
+- **Emergency/hospital access**: maintain "never degrade" routes and intersections; treat as hard constraint in playbooks.
 
 #### Metrics (by mode + geography)
 - **Person-delay** (not just vehicle delay): estimate by mode share and occupancy assumptions.
@@ -253,6 +306,7 @@ Rare-event modes shift priorities. Make the shift explicit, pre-approved, and me
 - **Safety proxies**: max queue spillback into intersections, red-light compliance stress proxies, conflict indicators if available.
 
 ### 4) Playbook lifecycle governance: version control, validation, retirement
+
 FHWA notes that improving planned special event practice often requires incorporating techniques into day-to-day policies and procedures and committing resources to support recommended activities ([`Planned Special Events Preparedness - FHWA`](https://ops.fhwa.dot.gov/tim/preparedness/pse/index.htm:1)). Treat playbooks as controlled operational artifacts.
 
 #### Versioning scheme (semver-like)
@@ -290,14 +344,16 @@ Metadata per playbook:
 - Staff time budget per quarter: validation runs + call-down list refresh + comms template refresh.
 - Backlog management: label issues as `safety`, `ops friction`, `data gap`, `partner dependency`.
 
-### 5) Boundary with the “Real-Time What-If Button”
+### 5) Boundary with the "Real-Time What-If Button"
+
 Define operating modes to prevent unsafe improvisation.
 
 - **Static playbook buttons**: pre-approved plan sets + checklists + comms templates. Intended for *fast, safe execution*.
 - **Dynamic playbooks**: still bounded and pre-approved *candidate sets*, but selection among candidates is informed by quick evaluation (e.g., simulation/what-if scoring) under constraints.
 
 #### Decision logic (when to use which)
-```
+
+```text
 IF life-safety / evacuation / police-directed control active:
   use STATIC playbook only (or manual per incident command)
 ELSE IF event is known + rehearsed + sensors degraded:
@@ -315,7 +371,8 @@ ELSE:
 - **Event log**: decision rationale recorded (signals + scoring + human confirmation).
 
 ### 6) Drill program design (tabletop → functional → full-scale) with evaluation
-FHWA explicitly provides “Tabletop Exercise Instructions for Planned Events and Unplanned Incidents/Emergencies” as a preparedness resource ([`Planned Special Events Preparedness - FHWA`](https://ops.fhwa.dot.gov/tim/preparedness/pse/index.htm:1)). WSDOT also highlights real-time monitoring and after-hours staffing needs for turning plans on/off and adjusting to actual conditions ([`Planned event or incident signal timing | TSMO | WSDOT`](https://tsmowa.org/category/intelligent-transportation-systems/planned-event-or-incident-signal-timing:1)).
+
+FHWA explicitly provides "Tabletop Exercise Instructions for Planned Events and Unplanned Incidents/Emergencies" as a preparedness resource ([`Planned Special Events Preparedness - FHWA`](https://ops.fhwa.dot.gov/tim/preparedness/pse/index.htm:1)). WSDOT also highlights real-time monitoring and after-hours staffing needs for turning plans on/off and adjusting to actual conditions ([`Planned event or incident signal timing | TSMO | WSDOT`](https://tsmowa.org/category/intelligent-transportation-systems/planned-event-or-incident-signal-timing:1)).
 
 #### Drill types and cadence
 - **Tabletop (monthly/quarterly)**: comms + decision walkthrough; no system actuation.
@@ -324,6 +381,7 @@ FHWA explicitly provides “Tabletop Exercise Instructions for Planned Events an
 - **Full-scale (as feasible)**: integrated with a real event where a playbook is intentionally exercised and evaluated.
 
 #### Success criteria (example rubric)
+
 | Dimension | Target | Measure |
 |---|---|---|
 | Time-to-activate | ≤ 10 min from trigger to plan active | timestamps (trigger → confirm → implement) |
@@ -334,6 +392,7 @@ FHWA explicitly provides “Tabletop Exercise Instructions for Planned Events an
 | Operator workload | manageable | operator feedback + number of manual interventions |
 
 #### After-Action Review (AAR) template
+
 ```markdown
 # After-Action Review (AAR) — Rare-Event Practice Mode
 
@@ -379,6 +438,7 @@ FHWA explicitly provides “Tabletop Exercise Instructions for Planned Events an
 ## Operations artifacts (templates and tables)
 
 ### Playbook template (what every playbook must contain)
+
 1. **Scenario definition** (who/what/where/when)
 2. **Objective + constraints** (safety + multimodal priorities)
 3. **Activation triggers** (spec + confidence + persistence)
@@ -391,17 +451,20 @@ FHWA explicitly provides “Tabletop Exercise Instructions for Planned Events an
 10. **Governance metadata** (owner, version, expiry, approvals)
 
 ### Monitoring dashboard minimum (operator view)
+
 - Current mode + time since activation + time to expiry.
-- Corridor KPIs (queues, travel times) + “safety constraint” indicators.
+- Corridor KPIs (queues, travel times) + "safety constraint" indicators.
 - Partner status panel (closures, police control points).
 - Recommended next step (stay / adjust within bounds / recover / rollback).
 
 ## MVP Deployment
+
 - 3 scenarios (e.g., stadium egress, major detour, storm-safe mode).
 - Quarterly tabletop drills.
 - Assisted activation + rollback.
 
 ## Evaluation
+
 - Activation latency (time from detection to plan start).
 - Clearance time and spillback frequency.
 - Operator adherence to checklist.
@@ -410,9 +473,10 @@ FHWA explicitly provides “Tabletop Exercise Instructions for Planned Events an
 ---
 
 ## Implementation Checklist
+
 - [ ] Identify top 3–6 rare-event scenarios (recurrence × impact) and assign owners.
 - [ ] Define per-scenario objectives, constraints, and multimodal priority regime.
-- [ ] Build trigger specs with persistence, hysteresis, and operator-confirm “pending” state.
+- [ ] Build trigger specs with persistence, hysteresis, and operator-confirm "pending" state.
 - [ ] Create plan sets (2–4 each) including conservative default and explicit recovery/rollback.
 - [ ] Define partner map, RACI, call-down lists, and SitRep cadence.
 - [ ] Create public messaging templates (511/social/DMS as applicable).
@@ -424,6 +488,7 @@ FHWA explicitly provides “Tabletop Exercise Instructions for Planned Events an
 ## Operations Runbook (SOP)
 
 ### SOP 0 — Common steps (all event types)
+
 1. **Detect/declare**: receive trigger (scheduled/detected/declared).
 2. **Enter PENDING**: system compiles evidence + confidence; operator reviews.
 3. **Confirm scope**: verify geofence/corridor and that required devices/comms are healthy.
@@ -436,26 +501,31 @@ FHWA explicitly provides “Tabletop Exercise Instructions for Planned Events an
 10. **Log + AAR**: finalize timeline, export metrics, schedule AAR.
 
 ### SOP 1 — Planned special event (ingress/egress)
+
 - **Activation**: schedule-based with operator confirmation; verify venue release schedule.
 - **Key monitoring**: ped volumes/crossings, queue spillback, transit hub access.
 - **Deactivation**: after egress decays + queues stable for persistence window.
 
 ### SOP 2 — Major incident diversion
+
 - **Activation**: declared (police/dispatch) + detected (probe/detector).
 - **Key monitoring**: diversion route travel time, neighborhood cut-through proxies, emergency routes.
 - **Deactivation**: when lanes restored + travel times normalize; coordinate with towing/recovery ETA.
 
 ### SOP 3 — Transit disruption (bus detours)
+
 - **Activation**: declared by transit + detected bus bunching.
 - **Key monitoring**: bus OTP/headways, detour corridor queues, ped access near stops.
 - **Deactivation**: when rail restored and buses return to normal routing.
 
 ### SOP 4 — Evacuation / emergency
+
 - **Activation**: declared by emergency management/incident command.
 - **Mode rule**: static playbook only; bounded actions; prioritize clearance routes.
 - **Deactivation**: only after incident command releases; staged rollback.
 
 ### SOP 5 — Degraded operations (comms/power constraints)
+
 - **Activation**: declared by ITS/maintenance or detected comms degradation.
 - **Mode rule**: conservative timing plans, minimize plan switching.
 - **Deactivation**: after comms stable and device health checks pass.
@@ -463,37 +533,45 @@ FHWA explicitly provides “Tabletop Exercise Instructions for Planned Events an
 ## Governance / Versioning Runbook
 
 ### Ownership
+
 - **Program owner**: accountable for library health, drill calendar, partner coordination.
 - **Playbook owner** (per scenario): accountable for accuracy, expiry, validation evidence.
 - **On-call approvers**: ops supervisor + traffic engineer + partner sign-off where needed.
 
 ### Change management
+
 - Use `MAJOR.MINOR.PATCH` versioning.
 - Require review evidence attached (twin run, tabletop notes, field observation).
 - Publish release notes; update training artifacts; update call-down lists.
 
 ### Recertification + expiry
+
 - Default expiry: 12 months (or shorter for construction-heavy corridors).
 - Auto-block activation if expired (with override workflow).
 - Recertify upon network/controller/transit/geometry changes.
 
 ### Audit + compliance
+
 - Maintain immutable activation logs (who/what/when/why + signals used + outcomes).
 - Keep archived versions for audit, especially for incidents with public scrutiny.
 
 ## Reference Links
+
 - FHWA Planned Special Events Preparedness: [`https://ops.fhwa.dot.gov/tim/preparedness/pse/index.htm`](https://ops.fhwa.dot.gov/tim/preparedness/pse/index.htm:1)
 - WSDOT TSMO — Planned event or incident signal timing: [`https://tsmowa.org/category/intelligent-transportation-systems/planned-event-or-incident-signal-timing`](https://tsmowa.org/category/intelligent-transportation-systems/planned-event-or-incident-signal-timing:1)
 - FHWA Traffic Signal Timing Manual (already referenced): [`https://ops.fhwa.dot.gov/publications/fhwahop08024/fhwa_hop_08_024.pdf`](https://ops.fhwa.dot.gov/publications/fhwahop08024/fhwa_hop_08_024.pdf)
 - FHWA ATSPM (already referenced): [`https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm`](https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm:1)
 
 ## Completion Checklist
-- ✅ Trigger design framework added: see **“1) Trigger Design Framework”**.
-- ✅ Interagency coordination + comms added: see **“2) Interagency Coordination + Communications”**.
-- ✅ Equity + multimodal priority regimes added: see **“3) Equity + multimodal priority regimes”**.
-- ✅ Playbook lifecycle governance added: see **“4) Playbook lifecycle governance”** and **“Governance / Versioning Runbook”**.
-- ✅ Boundary with Real-Time What-If Button clarified: see **“5) Boundary with the Real-Time What-If Button”**.
-- ✅ Drill program design + evaluation added: see **“6) Drill program design”**.
+
+- ✅ Trigger design framework added: see **"1) Trigger Design Framework"**.
+- ✅ Decision tree (activate → operate → unwind) added: see **"Decision tree: activate → operate → unwind"**.
+- ✅ Trigger spec template + example trigger table added: see **"Trigger spec table + example triggers"**.
+- ✅ Interagency coordination + comms added: see **"2) Interagency Coordination + Communications"**.
+- ✅ Equity + multimodal priority regimes added: see **"3) Equity + multimodal priority regimes"**.
+- ✅ Playbook lifecycle governance added: see **"4) Playbook lifecycle governance"** and **"Governance / Versioning Runbook"**.
+- ✅ Boundary with Real-Time What-If Button clarified: see **"5) Boundary with the Real-Time What-If Button"**.
+- ✅ Drill program design + evaluation added: see **"6) Drill program design"**.
 - ✅ Final required sections added: **Implementation Checklist**, **Operations Runbook (SOP)**, **Governance / Versioning Runbook**, **Reference Links**, **Completion Checklist**.
 
 ---

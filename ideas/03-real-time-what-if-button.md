@@ -25,12 +25,13 @@ A **real-time what-if button** is an operator workflow backed by a calibrated di
 - **Fast simulation stack**: micro/meso twin capable of faster-than-real-time rollouts.
 - **Action generator**: templates for safe candidate actions; constraints-aware (no illegal phasing).
 - **Guardrails + rollback**: bounded actions, automatic revert if KPIs degrade.
-- **Observability**: ATSPM-style metrics to validate predictions and measure impacts ([`FHWA ATSPM (landing)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm)).
+- **Observability**: ATSPM-style metrics to validate predictions and measure impacts ([FHWA ATSPM (landing)](https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm)).
 
 ---
 
 ## 1) State initialization & uncertainty handling
-A what-if tool only works if it can **initialize a realistic state** quickly and admit when it cannot. ATSPM guidance makes clear that the tooling supports engineers/technicians by exposing operational issues and requires interpretation and action; a what-if tool should follow the same philosophy by surfacing evidence and confidence rather than pretending it “knows” ([`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+
+A what-if tool only works if it can **initialize a realistic state** quickly and admit when it cannot. ATSPM guidance makes clear that the tooling supports engineers/technicians by exposing operational issues and requires interpretation and action; a what-if tool should follow the same philosophy by surfacing evidence and confidence rather than pretending it “knows” ([FHWA ATSPM Use Cases (Ch.4)](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
 
 ### Minimum required inputs (baseline)
 - **Controller state**: current phase/interval, plan ID, coordination state (if applicable), phase termination types (gap/max/force-off).
@@ -45,7 +46,7 @@ Use a **layered state estimator**:
 2. **Primary sensors**: stop-bar detection and phase state (if good health).
 3. **Secondary corroboration**: advance detectors, probe travel times, and “symptom” signals like max-outs/force-offs patterns.
 
-ATSPM shows how high-resolution event patterns can be used to identify detection and comms problems (e.g., watchdog conditions and phase termination diagrams) and therefore can be used as “sensor health” inputs to a what-if state estimator ([`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+ATSPM shows how high-resolution event patterns can be used to identify detection and comms problems (e.g., watchdog conditions and phase termination diagrams) and therefore can be used as “sensor health” inputs to a what-if state estimator ([FHWA ATSPM Use Cases (Ch.4)](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
 
 ### Queue estimation methods for short horizons (1–5 min)
 Use methods that can run fast and degrade gracefully:
@@ -55,7 +56,7 @@ Use methods that can run fast and degrade gracefully:
   - look for sustained high downstream occupancy (or near-continuous presence) coupled with discharge suppression (few departures even when green)
   - incorporate “red occupancy” patterns and split failures as warning signals.
 
-ATSPM defines split failures and describes occupancy-ratio logic (GOR/ROR5) used to detect split failures when demand exceeds service, which can be used as an operational proxy for “queues not clearing” ([`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm), [`FHWA ATSPM (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/fhwahop20002.pdf)).
+ATSPM defines split failures and describes occupancy-ratio logic (GOR/ROR5) used to detect split failures when demand exceeds service, which can be used as an operational proxy for “queues not clearing” ([FHWA ATSPM Use Cases (Ch.4)](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm), [FHWA ATSPM (PDF)](https://ops.fhwa.dot.gov/publications/fhwahop20002/fhwahop20002.pdf)).
 
 ### Representing and propagating uncertainty
 Represent uncertainty explicitly and carry it into scenario ranking:
@@ -68,7 +69,7 @@ Define clear data freshness checks:
 - If controller state is older than the freshness SLO, the UI should disable “Apply” and label results as unavailable.
 - If detection health checks indicate “no data” or suspicious patterns, the system should either (a) reduce action vocabulary to “plan switch only” or (b) refuse recommendations.
 
-ATSPM’s watchdog examples explicitly include “no data” conditions to identify comms failure, illustrating why staleness needs formal handling ([`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+ATSPM’s watchdog examples explicitly include “no data” conditions to identify comms failure, illustrating why staleness needs formal handling ([FHWA ATSPM Use Cases (Ch.4)](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
 
 ### UI behavior for uncertainty (operator-facing)
 Operators should see:
@@ -79,7 +80,8 @@ Operators should see:
 ---
 
 ## 2) Controller/ATMS feasibility constraints + action vocabulary
-The what-if tool must recommend **only actions that can be deployed safely** on the target controllers and within agency policy. Signal timing guidance describes plan development and coordinated operation, and priority/preemption considerations that bound what is operationally feasible ([`FHWA Traffic Signal Timing Manual (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/fhwa_hop_08_024.pdf), [`FHWA Timing Manual — Chapter 7 (Plan development)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm), [`FHWA Timing Manual — Chapter 9 (Priority/Preemption)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)).
+
+The what-if tool must recommend **only actions that can be deployed safely** on the target controllers and within agency policy. Signal timing guidance describes plan development and coordinated operation, and priority/preemption considerations that bound what is operationally feasible ([FHWA Traffic Signal Timing Manual (PDF)](https://ops.fhwa.dot.gov/publications/fhwahop08024/fhwa_hop_08_024.pdf), [FHWA Timing Manual — Chapter 7 (Plan development)](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm), [FHWA Timing Manual — Chapter 9 (Priority/Preemption)](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)).
 
 ### Action Vocabulary (vendor-neutral)
 Feasible, common action types:
@@ -92,13 +94,14 @@ Feasible, common action types:
 
 ### “Can apply now?” gating rules
 For each candidate action, compute an explicit feasibility verdict:
-- **Controller capability check**: action supported by the controller configuration and communications objects (often via NTCIP management/control objects) ([`NTCIP 1211 (Signal Control and Prioritization)`](https://www.ntcip.org/file/2018/11/NTCIP1211-v0224j.pdf)).
+- **Controller capability check**: action supported by the controller configuration and communications objects (often via NTCIP management/control objects) ([NTCIP 1211 (Signal Control and Prioritization)](https://www.ntcip.org/file/2018/11/NTCIP1211-v0224j.pdf)).
 - **Safety/legal constraints**: do not violate minimum greens, clearance intervals, or pedestrian service requirements.
 - **Coordination transition constraints**: if coordinated, only allow actions at safe boundaries and with documented transition logic.
 - **Health/staleness constraints**: if state confidence is low, restrict the action set.
 - **Rate limiting**: prevent rapid oscillation between actions.
 
 ### Action table (what operators actually need)
+
 | Action | Preconditions | Risks | Rollback method | Typical use cases |
 |---|---|---|---|---|
 | Switch to plan ID | plan exists + approved; safe transition point; comms healthy | wrong plan for conditions; coordination disruption | revert to previous plan ID; timed auto-revert | incident detour; peak shift; planned event |
@@ -110,6 +113,7 @@ For each candidate action, compute an explicit feasibility verdict:
 ---
 
 ## 3) Objective design, tradeoffs, and anti-gaming guardrails
+
 The what-if button needs a consistent scoring rubric that separates **hard constraints** from **soft objectives**.
 
 ### Recommended KPI set (short horizon)
@@ -122,7 +126,7 @@ Use a compact but multi-modal KPI bundle:
 - **Transit delay**: bus delay / reliability if TSP corridors.
 - **Safety proxies** (if available): red-light running risk proxies, near-miss/conflict proxies.
 
-ATSPM provides definitions for progression evaluation and describes arrivals-on-green in the Purdue Coordination Diagram context, and it defines split failures and the GOR/ROR5 logic used to detect them ([`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+ATSPM provides definitions for progression evaluation and describes arrivals-on-green in the Purdue Coordination Diagram context, and it defines split failures and the GOR/ROR5 logic used to detect them ([FHWA ATSPM Use Cases (Ch.4)](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
 
 ### Hard constraints vs soft objectives
 - **Hard constraints** (must not violate): pedestrian minimums/clearance, maximum queue/storage constraints at critical approaches, “do-not-block” boundary constraints.
@@ -148,6 +152,7 @@ ATSPM provides definitions for progression evaluation and describes arrivals-on-
 ---
 
 ## 4) Operator workflow, accountability, and governance
+
 A what-if tool is a decision-support workflow, not a model demo.
 
 ### Roles and permissions (recommended)
@@ -178,6 +183,7 @@ Every run should record:
 ---
 
 ## 5) Compute/infra reliability + safe degradation behavior
+
 If compute and data pipelines are unreliable, the feature will be ignored in real incidents.
 
 ### Latency budgets and SLOs
@@ -201,6 +207,7 @@ Track and alert on:
 ---
 
 ## 6) Network effects and interaction boundaries
+
 Local actions can harm adjacent areas.
 
 ### When local actions cause harm elsewhere
@@ -218,8 +225,60 @@ Local actions can harm adjacent areas.
 
 ---
 
-### Detailed Implementation Plan
-#### Phase 1: Define Operator Use Cases and Performance SLOs (Weeks 1–8)
+## 7) Pipeline Diagram: Snapshot → Scenarios → Scoring → Recommendation → Apply/Rollback
+
+This is the required **pipeline diagram**, rendered as a text diagram for use in docs and design reviews.
+
+```text
+        [1] Live Snapshot & Health Checks
+              |  (controller state, detectors, ped, probes)
+              v
+        [2] State Estimation & Confidence
+              |  - queues, spillback risk, arrivals
+              |  - confidence scores, staleness checks
+              v
+        [3] Scenario & Action Generation
+              |  - bounded action vocabulary
+              |  - per-action feasibility gate
+              v
+        [4] Simulation & Scoring Engine
+              |  - short-horizon rollouts (1–5 min)
+              |  - KPI bundle + hard constraints
+              |  - uncertainty ensembles
+              v
+        [5] Ranking & Recommendation
+              |  - top-N options with
+              |    * predicted KPI deltas
+              |    * uncertainty bands
+              |    * key risks/constraints
+              v
+        [6] Operator Review & Apply
+              |  - confirm feasibility gates
+              |  - choose action or do nothing
+              |  - configure rollback window
+              v
+        [7] Apply Action on Field Controllers
+              |  - via ATMS/NTCIP commands
+              |  - at safe boundaries only
+              v
+        [8] Monitoring & Rollback
+              |  - watch KPIs during window
+              |  - auto/manual rollback if
+              |    thresholds exceeded
+              v
+        [9] Audit & Learning
+              - log inputs, versions, choices,
+                outcomes, and operator notes
+              - feed back into calibration
+```
+
+This pipeline corresponds 1:1 with the implementation plan phases and the SOP.
+
+---
+
+## Detailed Implementation Plan
+
+### Phase 1: Define Operator Use Cases and Performance SLOs (Weeks 1–8)
 The agency should start by selecting a small number of operator scenarios where a what-if tool would plausibly change decisions, such as incident response, construction detours, or peak-period queue management. The team should define a strict service-level objective for response time (for example, p95 < 30 seconds) and should define how fresh the input data must be before the system refuses to simulate. The team should then specify a standard KPI bundle that operators will see for every what-if run, including delay, p95 queue, spillback probability, arrivals-on-green, and pedestrian delay, because consistency is essential for decision-making under stress. Finally, the team should define a bounded list of allowable actions (plan switch, small split tweaks, small offset tweaks) and should explicitly exclude unsafe or legally constrained actions so the system cannot recommend something that cannot be implemented.
 
 - **Roles**: operations lead (workflow owner), traffic engineer (KPI definitions and allowable actions), product/UX (operator experience), safety/accessibility reviewer (pedestrian implications), IT/security (access and audit requirements).
@@ -227,7 +286,7 @@ The agency should start by selecting a small number of operator scenarios where 
 - **Risks**: too many scenarios create scope creep; unrealistic latency targets lead to unusable results.
 - **Acceptance checks**: the spec is signed off, SLOs are measurable, and the allowed-action set is implementable on the target controller platforms.
 
-#### Phase 2: Data Ingestion and State Estimation (Weeks 9–18)
+### Phase 2: Data Ingestion and State Estimation (Weeks 9–18)
 The engineering team should build a reliable ingestion path for controller events (phase and interval state, detector actuations, pedestrian calls) and should optionally integrate probe travel times if a vendor feed exists. The team should implement data quality checks that reflect real signal operations, such as detector stuck-on/off checks, communications heartbeat monitoring, and time-synchronization validation, because stale or incorrect state is the most common root cause of bad predictions. The team should then implement queue and state estimation using conservative filters that respect lane storage limits and that emit a confidence score, because operators should be told when the system is guessing. The team should log the estimated state and confidence for every request so later analysis can correlate “bad recommendations” with low-confidence inputs.
 
 - **Roles**: data engineer (pipelines), modeling engineer (state estimation), signal technician (detector validation), operations (feedback on when state is “clearly wrong”).
@@ -235,7 +294,7 @@ The engineering team should build a reliable ingestion path for controller event
 - **Risks**: sparse detection produces unstable queue estimates; probe coverage gaps bias results.
 - **Acceptance checks**: state estimates are stable on normal days, confidence scores correlate with error, and staleness rules correctly block simulations when inputs are too old.
 
-#### Phase 3: Twin Build and Runtime Optimization (Weeks 19–30)
+### Phase 3: Twin Build and Runtime Optimization (Weeks 19–30)
 The modeling team should select a simulation approach that matches the runtime SLO, because a micro-simulation that cannot respond in time is worse than a faster queue-based model that is “good enough” for short horizons. The team should build and calibrate the corridor model to match not only average travel times but also queue peaks and arrivals-on-green, and it should validate performance for the specific horizons the tool will use (typically 1–5 minutes). The infrastructure team should optimize runtime by warming the twin from the estimated current state, parallelizing candidate evaluations, and caching stable components such as route sets, because these tactics are what allow real-time decision support. Finally, the team should establish a repeatable benchmark suite that measures p50/p95 simulation time and prediction error so performance does not silently regress.
 
 - **Roles**: simulation/modeling engineer (twin), infrastructure engineer (runtime/performance), traffic engineer (calibration targets), QA engineer (benchmarks and regression testing).
@@ -243,7 +302,7 @@ The modeling team should select a simulation approach that matches the runtime S
 - **Risks**: micro-simulation remains too slow; mismatch between estimated queues and simulated queues reduces trust.
 - **Acceptance checks**: the system meets the response-time SLO on realistic hardware and produces prediction error within the agreed tolerance for key KPIs.
 
-#### Phase 4: Candidate Actions Library and Safety Envelope (Weeks 31–40)
+### Phase 4: Candidate Actions Library and Safety Envelope (Weeks 31–40)
 The traffic engineer should define a library of action templates that match how controllers are actually configured in practice, such as switching between pre-approved plan IDs or applying limited split/offset adjustments that preserve minimum green and pedestrian clearance requirements. The software team should encode hard constraints that reject illegal actions before simulation and should also reject actions if the current state is stale or the self-healing health checks indicate unreliable detection. The team should implement rollback behavior that operators understand, such as a time-based revert to a known plan and a KPI-triggered revert if queues worsen beyond a pre-set threshold, because rollback is the practical safety net for decision support. Finally, the team should implement rate limits and full audit logging so plan changes do not oscillate and so post-incident reviews can determine why a change was made.
 
 - **Roles**: traffic engineer (bounds and legality), software engineer (constraints and rollback), safety reviewer (ped rules), operations lead (workflow and training inputs).
@@ -251,7 +310,7 @@ The traffic engineer should define a library of action templates that match how 
 - **Risks**: incomplete constraints allow unsafe recommendations; rollback triggers are too sensitive and create instability.
 - **Acceptance checks**: every action is validated against constraints prior to simulation, rollback works in staging and in pilot drills, and operators can revert within minutes.
 
-#### Phase 5: Operator UI and Workflow Integration (Weeks 41–52)
+### Phase 5: Operator UI and Workflow Integration (Weeks 41–52)
 The UX team should design the interface for speed and clarity, because operators make decisions under stress and cannot interpret a research dashboard. The UI should show the current state estimate and its confidence, and it should present a short list of ranked options with predicted deltas and uncertainty rather than a single “best” answer. The tool should require explicit confirmation before any actuation and should clearly label when the system is only simulating, because this reduces automation bias. The team should integrate the tool into existing TMC workflows by linking decisions to incident logs and shift notes, and it should train operators through tabletop exercises that include both successful and failed predictions.
 
 - **Roles**: UX engineer (UI), operations lead (training), traffic engineer (interpretation), product owner (scope and rollout).
@@ -259,7 +318,7 @@ The UX team should design the interface for speed and clarity, because operators
 - **Risks**: operators may over-trust or ignore recommendations; too much information reduces usability.
 - **Acceptance checks**: operators complete drills successfully, UI meets latency targets, and logs capture decisions, overrides, and outcomes.
 
-#### Phase 6: Pilot Deployment, Evaluation, and Scaling (Weeks 53+ / Ongoing)
+### Phase 6: Pilot Deployment, Evaluation, and Scaling (Weeks 53+ / Ongoing)
 The agency should run the tool in shadow mode first and should compare predicted KPI deltas to realized KPIs, because this is the fastest way to measure whether the model is trustworthy without creating operational risk. The team should then move to assisted actuation where operators apply recommended actions with rollback enabled, and it should measure how often operators accept recommendations and why they override them. The modeling team should implement a calibration and drift-detection cadence (monthly, or sooner during construction) so predictions remain relevant. To scale to new corridors, the team should reuse the architecture and UI but should redo calibration, action bounds, and policy constraints for each corridor, because local phasing and pedestrian requirements differ.
 
 - **Roles**: program owner (governance), operations (daily use), modeling team (calibration), data analyst (evaluation).
@@ -271,6 +330,8 @@ The agency should run the tool in shadow mode first and should compare predicted
 - **Recommend-only**: operators view outcomes but apply changes manually.
 - **Assisted control**: operator-confirmed actuation with rollback.
 - **Continuous shadow**: always-on evaluation for learning and validation.
+
+---
 
 ## Technical Mechanics
 
@@ -285,12 +346,18 @@ The agency should run the tool in shadow mode first and should compare predicted
 - Reject actions when state is stale or health checks fail.
 - Rate-limit plan changes; enforce revert paths.
 
+---
+
 ## MVP Deployment
+
 - One corridor (5–12 signals).
 - 3 candidate actions.
 - Shadow mode for 2–4 weeks, then assisted activation.
 
+---
+
 ## Evaluation
+
 - Prediction error (queues/travel times).
 - Decision latency distribution.
 - Operator acceptance/override rate.
@@ -299,17 +366,21 @@ The agency should run the tool in shadow mode first and should compare predicted
 ---
 
 ## Implementation Checklist
-- Define SLOs: end-to-end latency, data freshness, and safe-degradation behaviors.
-- Implement live state ingestion (controller + detectors + ped + optional probe) and health/staleness checks; reuse watchdog patterns where possible ([`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
-- Build state estimator with explicit confidence scoring and spillback detection.
-- Implement a bounded action vocabulary tied to controller capabilities and agency policy; include a per-action feasibility gate ([`FHWA Timing Manual — Chapter 7`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm)).
-- Implement multi-objective scoring with hard constraints and anti-gaming (caps, penalties, robust scoring).
-- Add audit logging for every run (inputs, versions, confidence, chosen action, rollback) and link to incident logs.
-- Build UI that shows confidence/uncertainty and requires explicit confirmation.
-- Deploy shadow-first; validate prediction error vs realized ATSPM/probe metrics.
-- Run drills and train operators to manage automation bias.
+
+- [ ] Define SLOs: end-to-end latency, data freshness, and safe-degradation behaviors.
+- [ ] Implement live state ingestion (controller + detectors + ped + optional probe) and health/staleness checks; reuse watchdog patterns where possible ([FHWA ATSPM Use Cases (Ch.4)](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+- [ ] Build state estimator with explicit confidence scoring and spillback detection.
+- [ ] Implement a bounded action vocabulary tied to controller capabilities and agency policy; include a per-action feasibility gate ([FHWA Timing Manual — Chapter 7](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm)).
+- [ ] Implement multi-objective scoring with hard constraints and anti-gaming (caps, penalties, robust scoring).
+- [ ] Add audit logging for every run (inputs, versions, confidence, chosen action, rollback) and link to incident logs.
+- [ ] Build UI that shows confidence/uncertainty and requires explicit confirmation.
+- [ ] Deploy shadow-first; validate prediction error vs realized ATSPM/probe metrics.
+- [ ] Run drills and train operators to manage automation bias.
+
+---
 
 ## Operations Runbook (SOP)
+
 ### Normal use
 1. Confirm data freshness and state confidence; if LOW, treat results as advisory only.
 2. Select scenario set (incident type / objective template).
@@ -318,7 +389,7 @@ The agency should run the tool in shadow mode first and should compare predicted
 5. Apply action with rollback enabled; monitor KPIs for the rollback window.
 
 ### When to refuse to apply
-- Controller state or detection feeds are stale or “no data” is detected ([`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
+- Controller state or detection feeds are stale or “no data” is detected ([FHWA ATSPM Use Cases (Ch.4)](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)).
 - Estimated state confidence is low *and* the action is high risk (hold/force-off).
 - Protected boundary link spillback risk increases.
 
@@ -333,24 +404,27 @@ The agency should run the tool in shadow mode first and should compare predicted
 ---
 
 ## Reference Links
-- [`FHWA Traffic Signal Timing Manual (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/fhwa_hop_08_024.pdf)
-- [`FHWA Timing Manual — Chapter 7 (Develop timing plans)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm)
-- [`FHWA Timing Manual — Chapter 9 (Priority/Preemption)`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)
-- [`FHWA ATSPM (landing)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm)
-- [`FHWA ATSPM Use Cases (Ch.4)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)
-- [`FHWA ATSPM (PDF)`](https://ops.fhwa.dot.gov/publications/fhwahop20002/fhwahop20002.pdf)
-- [`NTCIP 1211 (Signal Control and Prioritization)`](https://www.ntcip.org/file/2018/11/NTCIP1211-v0224j.pdf)
-- [`NCHRP Report 812 — Signal Timing Manual, Second Edition (PDF mirror)`](https://transops.s3.amazonaws.com/uploaded_files/Signal%20Timing%20Manual%20812.pdf)
+
+- [FHWA Traffic Signal Timing Manual (PDF)](https://ops.fhwa.dot.gov/publications/fhwahop08024/fhwa_hop_08_024.pdf)
+- [FHWA Timing Manual — Chapter 7 (Develop timing plans)](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter7.htm)
+- [FHWA Timing Manual — Chapter 9 (Priority/Preemption)](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)
+- [FHWA ATSPM (landing)](https://ops.fhwa.dot.gov/publications/fhwahop20002/index.htm)
+- [FHWA ATSPM Use Cases (Ch.4)](https://ops.fhwa.dot.gov/publications/fhwahop20002/ch4.htm)
+- [FHWA ATSPM (PDF)](https://ops.fhwa.dot.gov/publications/fhwahop20002/fhwahop20002.pdf)
+- [NTCIP 1211 (Signal Control and Prioritization)](https://www.ntcip.org/file/2018/11/NTCIP1211-v0224j.pdf)
+- [NCHRP Report 812 — Signal Timing Manual, Second Edition (PDF mirror)](https://transops.s3.amazonaws.com/uploaded_files/Signal%20Timing%20Manual%20812.pdf)
 
 ---
 
 ## Completion Checklist
+
 - ✅ State initialization + uncertainty — see `1) State initialization & uncertainty handling`
 - ✅ Feasibility + action vocabulary — see `2) Controller/ATMS feasibility constraints + action vocabulary`
 - ✅ Objectives + tradeoffs + anti-gaming — see `3) Objective design, tradeoffs, and anti-gaming guardrails`
 - ✅ Operator workflow + accountability — see `4) Operator workflow, accountability, and governance`
 - ✅ Compute/infra reliability — see `5) Compute/infra reliability + safe degradation behavior`
 - ✅ Network effects — see `6) Network effects and interaction boundaries`
+- ✅ Pipeline diagram — see `7) Pipeline Diagram: Snapshot → Scenarios → Scoring → Recommendation → Apply/Rollback`
 - ✅ End sections — see `Implementation Checklist`, `Operations Runbook (SOP)`, `Reference Links`
 
 ---

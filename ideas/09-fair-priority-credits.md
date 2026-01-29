@@ -97,19 +97,21 @@ The city should maintain a continuous improvement loop that adjusts budgets and 
 ## Implementation Additions (Implementation-Ready)
 
 ### 1) Define budget units (impact-based, not just seconds/events)
+
 A “credit” must represent **scarce intersection capacity and disruption cost**, not just an abstract token. Use a unit that is:
 - computable in real time,
 - explainable,
 - comparable across locations,
 - improvable over time as instrumentation improves.
 
-#### Candidate budget units (with pros/cons)
-| Unit | Definition | Pros | Cons | Best for |
-|---|---|---|---|---|
-| **Seconds of green change** | `Δgreen_sec` (early green / green extension / red truncation) | simplest; controller-native | ignores who is harmed; ignores coordination damage | MVP; single isolated intersection |
-| **Priority events** | 1 credit per granted request | simple accounting | very coarse; gaming risk | early pilots; low request volumes |
-| **Marginal person-delay imposed on others** | estimated `Δ person-delay` on non-priority users | impact-based and fairness-aligned | needs data + estimation | mature ATSPM/probe deployments |
-| **Coordination disruption cost** | proxy for recovery: AOG degradation / offset recovery time / extra split failures | captures network harm | needs corridor telemetry | coordinated arterials |
+#### Candidate budget units (required visual: unit definition → pros/cons → required data)
+
+| Unit | Definition | Pros | Cons | Best for | Required data |
+|---|---|---|---|---|---|
+| **Seconds of green change** | `Δgreen_sec` (early green / green extension / red truncation) | simplest; controller-native | ignores who is harmed; ignores coordination damage | MVP; single isolated intersection | controller timing, phase state, basic volume estimates |
+| **Priority events** | 1 credit per granted request | simple accounting | very coarse; gaming risk | early pilots; low request volumes | request counts, classification by class/route |
+| **Marginal person-delay imposed on others** | estimated `Δ person-delay` on non-priority users | impact-based and fairness-aligned | needs data + estimation | mature ATSPM/probe deployments | detectors/ATSPM, probe travel times, occupancy, basic demand model |
+| **Coordination disruption cost** | proxy for recovery: AOG degradation / offset recovery time / extra split failures | captures network harm | needs corridor telemetry | coordinated arterials | ATSPM arrivals-on-green, split failures, offset deviations, corridor topology |
 
 #### Real-time cheap impact estimation (vendor-neutral)
 Use a tiered estimator:
@@ -132,6 +134,7 @@ Fallback when data missing:
 **Source alignment**: FHWA describes TSP treatments such as red truncation (early green) and green extension, and notes that priority may be accomplished via extending greens, altering phase sequences, or including special phases without interrupting coordination ([`Traffic Signal Timing Manual: Chapter 9`](https://ops.fhwa.dot.gov/publications/fhwahop08024/chapter9.htm)).
 
 ### 2) Fairness constraints: operational definitions, accounting windows, and reporting
+
 “Fairness” becomes operational when you define **harm**, choose **accounting windows**, and enforce **caps**.
 
 #### Define “harm” per movement/area
@@ -161,6 +164,7 @@ Publish (internally; and externally in summarized form):
 - who “paid” (approaches/areas) and how much harm was imposed.
 
 ### 3) Anti-gaming / abuse resistance controls (transparent + auditable)
+
 Priority is gameable if requests are cheap and verification is weak.
 
 Controls:
@@ -179,11 +183,56 @@ Controls:
 ### 4) Architecture + real-time feasibility: where the policy engine lives and how it fails safely
 
 #### Placement options
+
 | Option | Where | Pros | Cons | Best fit |
 |---|---|---|---|---|
 | Edge | controller/cabinet | ultra-low latency; resilient to comms loss | limited compute; harder citywide fairness | isolated intersections; EVP enforcement |
 | Corridor edge node | field cabinet/edge server | good latency + corridor context | needs field hardware | coordinated arterials |
 | Central (TMC/ATMS) | central server | global budgets + reporting | comms dependency; latency | citywide policy, auditing |
+
+#### Request → policy → controller → accounting → reporting diagram (required visual)
+
+```text
+[Priority Request]
+  - Source: transit AVL, EVP device, freight fleet, bike corridor trigger
+  - Includes: requester_class, route/vehicle_id, location, timestamp, context
+        │
+        ▼
+[Ingress & Verification]
+  - Authenticate / validate class (transit / emergency / freight / bike)
+  - Classify as priority vs preemption
+        │
+        ▼
+[Policy & Credit Engine]
+  - Apply eligibility + anti-gaming checks
+  - Evaluate credit budgets + fairness caps
+  - Run safety/feasibility gate (ped mins, clearance, mode constraints)
+  - Decide: GRANT (with treatment), PARTIAL, or DENY
+        │
+        ▼
+[Controller / Field Action]
+  - Apply treatment (early green / green extension / phase insert / none)
+  - Start recovery plan to restore coordination
+        │
+        ▼
+[Accounting & State Update]
+  - Decrement credits / update harm ledgers
+  - Record budget_before / budget_after
+  - Tag affected approaches / watch areas
+        │
+        ▼
+[Monitoring & Impact Measurement]
+  - Measure realized impacts (transit OTP, delay, queues, spillback)
+  - Compare predicted vs realized harm
+        │
+        ▼
+[Reporting & Governance]
+  - Internal dashboards (spent / denied / who benefited / who paid)
+  - Public-facing summaries (equity slices, corridor reports)
+  - Inputs to budget resets and policy updates
+```
+
+This diagram is the reference **request → policy engine → controller action → accounting → reporting** flow for the fair priority credit system.
 
 #### Latency and reliability
 - What must happen **within a cycle**: eligibility check, hard safety gating, basic budget check.
@@ -205,6 +254,7 @@ Reuse a deployability gate concept:
 ### 5) Stakeholder governance: who sets budgets, how conflicts are resolved, and how changes are managed
 
 #### Roles / RACI (example)
+
 | Decision | Signals Ops | Transit Agency | Emergency Services | Freight Program | Equity Office | City Leadership |
 |---|---|---|---|---|---|---|
 | Define eligible classes | R | C | C | C | C | A |
@@ -234,6 +284,7 @@ Reuse a deployability gate concept:
 ### 6) Concrete implementation artifacts (deployable)
 
 #### Machine-readable policy example (YAML)
+
 ```yaml
 policy_id: "PRIORITY-CREDITS-01"
 version: "1.0.0"
@@ -303,6 +354,7 @@ logging:
 ```
 
 #### Event/log schema (audit trail)
+
 Events (append-only):
 - `request_received`
 - `eligibility_decided`
@@ -396,13 +448,13 @@ Each event includes: state snapshot, timing plan/mode, data freshness, and reaso
 - [`FHWA Order 6640.23`](https://highways.dot.gov/laws-regulations/directives/orders/664023)
 
 ## Completion Checklist
-- ✅ Budget units (seconds/events/person-delay/coord disruption) + phased approach: see **“1) Define budget units”**.
-- ✅ Fairness constraints + windows + reporting templates: see **“2) Fairness constraints…”**.
+- ✅ Budget **unit** table (definition → pros/cons → required data) + phased approach: see **“1) Define budget units”**.
+- ✅ Fairness constraints + windows + “credits statement” reporting: see **“2) Fairness constraints…”**.
 - ✅ Anti-gaming/abuse resistance: see **“3) Anti-gaming…”**.
-- ✅ Architecture + failure-safe behavior: see **“4) Architecture…”**.
+- ✅ Architecture placement + **request → policy engine → controller action → accounting → reporting diagram** + safe failure behavior: see **“4) Architecture…”**.
 - ✅ Stakeholder governance + arbitration + change control: see **“5) Stakeholder governance…”**.
 - ✅ Concrete artifacts (policy YAML, log schema, KPIs): see **“6) Concrete implementation artifacts”**.
-- ✅ Final required sections added: **Implementation Checklist**, **Operations Runbook (SOP)**, **Governance & Change-Control Runbook**, **Reference Links**, **Completion Checklist**.
+- ✅ Final required sections present: **Implementation Checklist**, **Operations Runbook (SOP)**, **Governance & Change-Control Runbook**, **Reference Links**, **Completion Checklist**.
 
 ---
 

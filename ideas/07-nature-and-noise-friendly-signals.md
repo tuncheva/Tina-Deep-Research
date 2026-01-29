@@ -89,6 +89,7 @@ The agency should treat quiet-mode timing as an ongoing program with seasonal re
 ## Implementation Additions (Implementation-Ready)
 
 ### 1) Measurement plan: validate proxies against actual noise (proxy-to-outcome calibration)
+
 A quiet-signal program needs *outcome* measurement (noise) and *operational* measurement (traffic proxies), with a documented calibration so proxy improvements are credible.
 
 #### Noise outcome metrics (what to measure)
@@ -110,6 +111,23 @@ Use proxies that are observable and sensitive to timing changes:
 - **Vehicle mix modifiers** (critical for noise):
   - **heavy-vehicle share** (trucks/buses) and **motorcycle share** where available.
   - **grade/surface flags**: steep grades and rough pavement can dominate noise; record as covariates.
+
+#### Metric/proxy → data → caveats → trigger table (required visual)
+
+This chart makes the measurement plan operational by tying each metric/proxy to data sources, validity caveats, and action triggers.
+
+| Metric / proxy | Data source(s) | Validity caveats | Action trigger example |
+|---|---|---|---|
+| `LAeq,T` (dBA) at sensor point | Class 1/2 sound level meter; calibrated campaign; timestamped logs | Short campaigns only; sensitive to background sources (HVAC, non-traffic); weather constraints | If `ΔLAeq,T ≤ -1.5 dBA` with stable traffic volume and no new non-traffic sources → qualify as meaningful quiet-mode benefit; if `ΔLAeq,T ≥ +1 dBA` in watch areas → review/rollback |
+| `Lmax` (peak dBA) | Same meter as LAeq, event-level logging | Dominated by rare events (motorcycles, sirens); needs enough samples; easy to misinterpret single spikes | If quiet-mode hours reduce number of `Lmax > threshold` events by ≥X% at sensitive receptors → maintain/expand; if peaks increase at night → investigate vehicle mix and timing |
+| Stops/vehicle | ATSPM/controller logs; probe trajectories; signal phase data | Requires good phase/detector mapping; probe sample bias; cannot see mid-block stops | If stops/veh in quiet zone drop ≥10–15% without violating ped/side-street caps → keep plan; if watch-area stops/veh increase >10% → adjust offsets/splits or shrink quiet window |
+| Speed variance / percentile spread | Probe speeds; possibly radar speed sensors | Low probe penetration; biased toward certain fleets; sensor misalignment | If `p85 - p15` decreases (more stable speeds) and `p85` not above target → good; if `p85` rises >2 mph over posted for `T_persist` → lower progression speed or rollback |
+| Accel / hard braking events | Probe telemetry (if available); video-derived trajectories | Often only for equipped vehicles; detection algorithms may misclassify | If hard accel/brake events per 1,000 veh fall ≥X% in quiet zone but rise in watch areas → adjust gating/progression; sustained rise in events anywhere → safety review/rollback |
+| Queue spillback frequency | Detector occupancy; queue detectors; video analytics | Placement critical; cannot see all spillback without downstream sensors | If crosswalk/intersection spillback events approach >Y/hour → enable more conservative plan or add gating; persistent spillback in watch areas → fail no-harm test |
+| Complaint rate (noise/traffic) | 311/complaint systems; community channels | Reporting bias by neighborhood; changes in communication campaigns | If complaints in quiet zone fall or stay flat while watch-area complaints rise >Z per month → equity/no-harm review and potential rollback or mitigation |
+| Heavy-vehicle share | Classification detectors; video classification; manual counts | Classifier accuracy; weather/lighting sensitivity; short samples | If HV share grows above modeled range, treat proxy-to-noise conversion with low confidence; require recalibration or direct noise checks before using proxy-only claims |
+
+These triggers should be embedded as configuration in the monitoring system (thresholds, persistence windows, and “who acts” per breach).
 
 #### Calibration protocol (pilot + control, then validate)
 1. **Select 2–4 pilot locations** in sensitive zones + **1 control site** with similar geometry and demand.
@@ -139,9 +157,56 @@ Treat proxy improvements as *insufficient evidence* when any apply:
 - major diversion/rerouting changes during the pilot.
 
 ### 2) Equity / Environmental Justice operationalization + “no harm” spillover governance
+
 Quiet zones can’t be allowed to shift harms (noise, congestion, cut-through) to adjacent neighborhoods. Operationalize “no harm” constraints and publish transparent reporting.
 
 **Source alignment**: FHWA’s environmental justice order defines *adverse effects* to include **noise pollution** and **increased traffic congestion**, and defines “disproportionately high and adverse effects” as those predominantly borne by, or more severe on, minority and/or low-income populations ([`FHWA Order 6640.23`](https://highways.dot.gov/laws-regulations/directives/orders/664023:1)).
+
+#### Zone + spillover monitoring loop diagram (required visual)
+
+```text
+             [ City Network ]
+                  │
+        +-------------------------+
+        |  Sensitive Quiet Zone   |
+        |  (e.g., park / hospital |
+        |   frontage corridor)    |
+        +-------------------------+
+          │          │
+          │          ├───────────────────────────────┐
+          │          │                               │
+   [Noise & Proxy   [Spillover Watch Areas]          │
+    Sensors in      (parallel routes +               │
+    Zone]           adjacent neighborhoods)          │
+          │                  │                       │
+          │                  │                       │
+          ▼                  ▼                       │
+   Measure LAeq/Lmax,   Measure volume/speeds,       │
+   stops/veh, speed     stops/veh, complaints        │
+   variance, HV share                               │
+          │                  │                       │
+          └───────────┬──────┴───────────────┐       │
+                      ▼                      ▼       │
+              [Compare to Baseline &  [Compare to Baseline &
+               No‑Harm Caps]          No‑Harm Caps]
+                      │                      │
+                      └──────────────┬───────┘
+                                     ▼
+                          [Monitoring & Governance]
+                          - Dashboards (zone + watch)
+                          - Equity/EJ review
+                          - Community reporting
+                                     │
+                       ┌─────────────┴─────────────────┐
+                       ▼                               ▼
+             If within caps                 If caps breached
+           - keep/expand quiet plan       - adjust timing/gating
+           - consider new zones           - modify schedule/zone
+                                          - or rollback quiet mode
+                                          - plus complementary policies
+```
+
+This diagram is the reference for how **Quiet Zone** and **Spillover Watch Areas** are monitored together and fed into governance decisions.
 
 #### Spillover governance design
 - Define **Sensitive Zone** (where you optimize for calm flow) and **Spillover Watch Areas** (adjacent neighborhoods and parallel routes).
@@ -171,6 +236,7 @@ Set explicit, measurable caps for watch areas during quiet mode:
   - complaints normalized by population/blocks.
 
 ### 3) Multimodal interactions and constraints (operational guardrails)
+
 Noise-friendly progression changes how all users experience the street. Make constraints explicit.
 
 #### Pedestrian comfort and accessibility
@@ -190,6 +256,7 @@ Noise-friendly progression changes how all users experience the street. Make con
   - signal timing can reduce stop-start *impulse noise* from trucks/buses but cannot eliminate engine noise; pair with routing/pavement policies.
 
 ### 4) Freight / heavy-vehicle routing and complementary policies (integration)
+
 Signal timing is only one lever; for truck noise it is often secondary.
 
 #### When signal timing helps
@@ -210,6 +277,7 @@ Signal timing is only one lever; for truck noise it is often secondary.
 - Treat quiet-mode corridors as “special operating areas” with jointly-owned outcomes.
 
 ### 5) Safety plan: speed compliance and conflict monitoring
+
 Progression can incentivize speeding if the progression speed is too high or if drivers “chase greens.” Safety must be monitored and tied to rollback.
 
 #### Speed compliance controls
@@ -232,6 +300,7 @@ Progression can incentivize speeding if the progression speed is too high or if 
 ### 6) Implementation details: zone design, modes, and operations
 
 #### “Quiet/Livability Mode” definition (artifact)
+
 ```yaml
 mode_id: "QUIET-01"
 name: "Quiet/Livability Mode — Park Edge Corridor"
@@ -269,6 +338,7 @@ rollback:
 ```
 
 #### Intervention patterns (catalog)
+
 | Pattern | What you change | When it helps | Watch-outs |
 |---|---|---|---|
 | Progression tuning | offsets + progression speed | reduce stops and harsh accel | can induce speeding if too fast |
@@ -346,13 +416,14 @@ To expand beyond pilot, require:
 - [`FHWA Traffic Signal Timing Manual`](https://ops.fhwa.dot.gov/publications/fhwahop08024/fhwa_hop_08_024.pdf)
 
 ## Completion Checklist
-- ✅ Measurement plan + proxy calibration: see **“1) Measurement plan”**.
+- ✅ Measurement plan + proxy calibration, with **metric/proxy → data → caveats → trigger table**: see **“1) Measurement plan”**.
+- ✅ Zone + spillover monitoring loop **diagram** added: see **“Zone + spillover monitoring loop diagram (required visual)”**.
 - ✅ Equity/EJ + no-harm spillover governance: see **“2) Equity / Environmental Justice…”**.
 - ✅ Multimodal interactions + constraints: see **“3) Multimodal interactions…”**.
 - ✅ Freight/heavy-vehicle integration: see **“4) Freight / heavy-vehicle…”**.
 - ✅ Safety plan (speed + conflicts + rollback): see **“5) Safety plan…”**.
-- ✅ Implementation details (mode definition, patterns, workflow, acceptance): see **“6) Implementation details…”**.
-- ✅ Final required sections added: **Implementation Checklist**, **Monitoring & Governance Runbook**, **Reference Links**, **Completion Checklist**.
+- ✅ Implementable "Quiet/Livability Mode" definition: see YAML under **“6) Implementation details…”**.
+- ✅ Final required sections present: **Implementation Checklist**, **Monitoring & Governance Runbook**, **Reference Links**, **Completion Checklist**.
 
 ---
 
